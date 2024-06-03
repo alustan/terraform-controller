@@ -73,6 +73,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map
                 {
                     Name:  "terraform",
                     Image: imageName,
+                    ImagePullPolicy: v1.PullAlways,
                     Command: []string{
                         "/bin/bash",
                         "-c",

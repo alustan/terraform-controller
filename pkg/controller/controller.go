@@ -12,6 +12,7 @@ import (
 	"controller/pkg/container"
 	"controller/pkg/kubernetes"
 	"controller/pkg/terraform"
+	"controller/pkg/util"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -108,34 +109,34 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 }
 
 func (c *Controller) handleSyncRequest(observed SyncRequest) {
-	envVars := terraform.ExtractEnvVars(observed.Parent.Spec.Variables, observed.Parent.Spec.Backend)
+	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables, observed.Parent.Spec.Backend)
 
 	script := observed.Parent.Spec.Scripts.Apply
 	if observed.Finalizing {
 		script = observed.Parent.Spec.Scripts.Destroy
 	}
 
-	repoDir := fmt.Sprintf("/tmp/%s", observed.Parent.Spec.GitRepo.URL)
-	err := terraform.CloneGitRepo(observed.Parent.Spec.GitRepo.URL, observed.Parent.Spec.GitRepo.Branch, observed.Parent.Spec.GitRepo.SSHKeySecret.Name, observed.Parent.Spec.GitRepo.SSHKeySecret.Key, repoDir)
+	repoDir := fmt.Sprintf("/tmp/%s", observed.Parent.Metadata.Name)
+	// Retrieve the SSH key from the secret
+	sshKey, err := terraform.getSSHKeyFromSecret(c.clientset, observed.Parent.Metadata.Namespace, observed.Parent.Spec.GitRepo.SSHKeySecret.Name, observed.Parent.Spec.GitRepo.SSHKeySecret.Key)
+	if err != nil {
+		log.Fatalf("Failed to get SSH key from secret: %v", err)
+	}
+
+	err := terraform.cloneOrPullRepo(observed.Parent.Spec.GitRepo.URL, observed.Parent.Spec.GitRepo.Branch, repoDir, sshKey)
 	if err != nil {
 		log.Printf("Error cloning Git repository: %s\n", err.Error())
 		return
 	}
 
 	provider := observed.Parent.Spec.Backend["provider"]
-	if provider == "vault" {
-		err = terraform.SetupVaultBackend(observed.Parent.Spec.Backend)
-		if err != nil {
-			log.Printf("Error setting up Vault backend: %s\n", err.Error())
-			return
-		}
-	} else if provider == "aws" {
+	if provider == "aws" {
 		err = terraform.SetupAWSBackend(observed.Parent.Spec.Backend)
 		if err != nil {
 			log.Printf("Error setting up AWS backend: %s\n", err.Error())
 			return
 		}
-	} else {
+	 else {
 		log.Printf("Unsupported backend provider: %s\n", provider)
 		return
 	}
@@ -180,7 +181,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 		return
 	}
 }
-
+}
 func (c *Controller) Reconcile() {
 	for {
 		c.reconcileLoop()

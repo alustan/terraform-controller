@@ -10,9 +10,9 @@ import (
 
 func UpdateStatus(dynClient dynamic.Interface, namespace, name string, status map[string]interface{}) error {
 	resource := schema.GroupVersionResource{
-		Group:    "example.com",
-		Version:  "v1",
-		Resource: "terraformconfigs",
+		Group:    "alustan.io",
+		Version:  "v1alpha1",
+		Resource: "terraforms",
 	}
 
 	// Fetch the existing resource

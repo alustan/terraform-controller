@@ -1,3 +1,5 @@
+# Give it a Little Time
+
 ## Introduction
 
 This document provides a detailed design for a Kubernetes controller integrated with Terraform. 
@@ -165,11 +167,17 @@ spec:
      inline: |
         terraform destroy -auto-approve
   gitRepo:
-    url: git@github.com:example/terraform-repo
+    url: git@github.com:example/terraform-repo//terraform
     branch: main
     sshKeySecret:
       name: my-ssh-secret
       key: ssh-privatekey
+  containerRegistry:
+    imageName: docker.io/alustan/terrform (image name to be built and push by the controller)
+    secretRef:
+      name: my-dockerhub-secret
+      key: dockerhub-cred
+
 # status:
 #   state: "Pending"
 #   message: "Awaiting processing"
@@ -215,8 +223,14 @@ spec:
       key: destroy-script.sh
    
   gitRepo:
-    url: https://github.com/example/terraform-repo
+    url: https://github.com/example/terraform-repo/terraform
     branch: main
+  containerRegistry:
+    imageName: docker.io/alustan/terrform (image name to be built and push by the controller)
+    secretRef:
+      name: my-dockerhub-secret
+      key: dockerhub-cred
+
   
 # status:
 #   state: "Pending"

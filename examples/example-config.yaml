@@ -1,13 +1,20 @@
 # kubectl create configmap terraform-scripts --from-file=apply-script=apply_script.sh --from-file=destroy-script=destroy_script.sh
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: terraform-scripts
-data:
-  apply-script.sh: |
-    #!/bin/bash
-    echo "This is the apply script"
-  destroy-script.sh: |
-    #!/bin/bash
-    echo "This is the destroy script"
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: terraform-scripts
+# data:
+#   apply-script.sh: |
+#     #!/bin/bash
+#     echo "This is the apply script"
+#   destroy-script.sh: |
+#     #!/bin/bash
+#     echo "This is the destroy script"
+
+
+# kubectl create secret docker-registry my-registry-secret \
+#   --docker-server=https://index.docker.io/v1/ \
+#   --docker-username=<USERNAME> \
+#   --docker-password=<PASSWORD> \
+#   --docker-email=<EMAIL>

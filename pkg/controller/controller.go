@@ -38,10 +38,15 @@ type TerraformConfigSpec struct {
 		Destroy string `json:"destroy"`
 	} `json:"scripts"`
 	GitRepo struct {
-		URL           string `json:"url"`
-		Branch        string `json:"branch"`
-		SSHKey        string `json:"sshKey"`
+		URL           string        `json:"url"`
+		Branch        string        `json:"branch"`
+		SSHKeySecret  SSHKeySecret  `json:"sshKeySecret"`
 	} `json:"gitRepo"`
+}
+
+type SSHKeySecret struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
 }
 
 type ParentResource struct {
@@ -56,7 +61,6 @@ type SyncRequest struct {
 	Parent     ParentResource `json:"parent"`
 	Finalizing bool           `json:"finalizing"`
 }
-
 
 func NewController(clientset *k8sclient.Clientset, dynClient dynclient.Interface) *Controller {
 	return &Controller{
@@ -104,8 +108,8 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 		script = observed.Parent.Spec.Scripts.Destroy
 	}
 
-	repoDir := fmt.Sprintf("/tmp/%s", observed.Parent.Metadata.Name)
-	err := terraform.CloneGitRepo(observed.Parent.Spec.GitRepo.URL, observed.Parent.Spec.GitRepo.Branch, observed.Parent.Spec.GitRepo.SSHKey, repoDir)
+	repoDir := fmt.Sprintf("/tmp/%s", observed.Parent.Spec.GitRepo.URL)
+	err := terraform.CloneGitRepo(observed.Parent.Spec.GitRepo.URL, observed.Parent.Spec.GitRepo.Branch, observed.Parent.Spec.GitRepo.SSHKeySecret.Name, observed.Parent.Spec.GitRepo.SSHKeySecret.Key, repoDir)
 	if err != nil {
 		log.Printf("Error cloning Git repository: %s\n", err.Error())
 		return
@@ -145,7 +149,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 	pvcName := "terraform-pvc"
 	var terraformErr error
 	for i := 0; i < maxRetries; i++ {
-		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Namespace, envVars, script, imageName,pvcName)
+		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Namespace, envVars, script, imageName, pvcName)
 		if terraformErr == nil {
 			break
 		}
@@ -177,20 +181,18 @@ func (c *Controller) Reconcile() {
 }
 
 func (c *Controller) reconcileLoop() {
-	// Fetch all TerraformConfig custom resources
 	resourceList, err := c.dynClient.Resource(schema.GroupVersionResource{
-		Group:    "example.com",
-		Version:  "v1",
-		Resource: "terraformconfigs",
+		Group:    "alustan.io",
+		Version:  "v1alpha1",
+		Resource: "terraforms",
 	}).Namespace("").List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		log.Printf("Error fetching TerraformConfig resources: %s\n", err.Error())
+		log.Printf("Error fetching Terraform resources: %s\n", err.Error())
 		return
 	}
 
 	for _, item := range resourceList.Items {
 		var observed SyncRequest
-		// Unmarshal the item to observed
 		raw, err := item.MarshalJSON()
 		if err != nil {
 			log.Printf("Error marshalling item: %s\n", err.Error())
@@ -202,7 +204,6 @@ func (c *Controller) reconcileLoop() {
 			continue
 		}
 
-		// Re-use the ServeHTTP logic
 		c.handleSyncRequest(observed)
 	}
 }

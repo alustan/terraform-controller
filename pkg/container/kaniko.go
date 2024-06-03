@@ -11,7 +11,7 @@ import (
 )
 
 // CreateBuildJob creates a Kubernetes Job to run a Kaniko build
-func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, imageName string) error {
+func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, imageName, dockerSecretName string) error {
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "docker-build-job",
@@ -22,17 +22,26 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 					Containers: []corev1.Container{
 						{
 							Name:  "kaniko",
-							Image: "gcr.io/kaniko-project/executor:latest",
+							Image: "gcr.io/kaniko-project/executor:v1.23.0",
 							Args: []string{
 								"--dockerfile=/config/Dockerfile",
 								fmt.Sprintf("--destination=%s", imageName),
 								"--context=/workspace/",
+								"--docker-credential-directory=/kaniko/.docker",
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
 									Name:      "dockerfile-config",
 									MountPath: "/config",
 									SubPath:   "Dockerfile",
+								},
+								{
+									Name:      "workspace",
+									MountPath: "/workspace",
+								},
+								{
+									Name:      "docker-credentials",
+									MountPath: "/kaniko/.docker",
 								},
 							},
 						},
@@ -49,6 +58,20 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 								},
 							},
 						},
+						{
+							Name: "workspace",
+							VolumeSource: corev1.VolumeSource{
+								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
+						{
+							Name: "docker-credentials",
+							VolumeSource: corev1.VolumeSource{
+								Secret: &corev1.SecretVolumeSource{
+									SecretName: dockerSecretName,
+								},
+							},
+						},
 					},
 				},
 			},
@@ -62,4 +85,3 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 
 	return nil
 }
-

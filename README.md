@@ -70,7 +70,7 @@ The project architecture consists of the following main components:
 
 #### in-cluster container build
 
-- Using kiniko
+- Using kaniko
 
 #### Workflow
 
@@ -167,7 +167,7 @@ spec:
      inline: |
         terraform destroy -auto-approve
   gitRepo:
-    url: git@github.com:example/terraform-repo
+    url: git@github.com:example/terraform-repo//terraform
     branch: main
     sshKeySecret:
       name: my-ssh-secret
@@ -223,7 +223,7 @@ spec:
       key: destroy-script.sh
    
   gitRepo:
-    url: https://github.com/example/terraform-repo
+    url: https://github.com/example/terraform-repo/terraform
     branch: main
   containerRegistry:
     imageName: docker.io/alustan/terrform (image name to be built and push by the controller)

@@ -1,22 +1,13 @@
 package util
 
-import (
-	"io/ioutil"
-	"os"
-)
-
-func EnsureDir(dirName string) error {
-	err := os.MkdirAll(dirName, os.ModePerm)
-	if err != nil {
-		return err
+func ExtractEnvVars(variables, backend map[string]string) map[string]string {
+	envVars := make(map[string]string)
+	for key, value := range variables {
+		envVars[key] = value
 	}
-	return nil
+	for key, value := range backend {
+		envVars[key] = value
+	}
+	return envVars
 }
 
-func TempFileName(dir, prefix string) string {
-	file, err := ioutil.TempFile(dir, prefix)
-	if err != nil {
-		return ""
-	}
-	return file.Name()
-}

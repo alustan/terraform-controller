@@ -73,6 +73,21 @@ spec:
                           type: string
                         key:
                           type: string
+
+                containerRegistry:
+                  type: object
+                  properties:
+                    imageName:
+                      type: string
+                    secretRef:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        key:
+                          type: string
+   
+      
                     
             status:
               type: object

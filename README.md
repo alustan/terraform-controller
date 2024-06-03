@@ -172,6 +172,12 @@ spec:
     sshKeySecret:
       name: my-ssh-secret
       key: ssh-privatekey
+  containerRegistry:
+    imageName: docker.io/alustan/terrform (image name to be built and push by the controller)
+    secretRef:
+      name: my-dockerhub-secret
+      key: dockerhub-cred
+
 # status:
 #   state: "Pending"
 #   message: "Awaiting processing"
@@ -219,6 +225,12 @@ spec:
   gitRepo:
     url: https://github.com/example/terraform-repo
     branch: main
+  containerRegistry:
+    imageName: docker.io/alustan/terrform (image name to be built and push by the controller)
+    secretRef:
+      name: my-dockerhub-secret
+      key: dockerhub-cred
+
   
 # status:
 #   state: "Pending"

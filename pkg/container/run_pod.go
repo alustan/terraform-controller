@@ -46,9 +46,8 @@ func EnsurePVC(clientset *kubernetes.Clientset, namespace, pvcName string) error
     return nil
 }
 
-
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map[string]string, script, imageName, pvcName string) error {
+func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map[string]string, script, imageName, pvcName, imagePullSecretName string) error {
     err := EnsurePVC(clientset, namespace, pvcName)
     if err != nil {
         return fmt.Errorf("failed to ensure PVC: %v", err)
@@ -72,7 +71,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map
         Spec: v1.PodSpec{
             Containers: []v1.Container{
                 {
-                    Name:  "app",
+                    Name:  "terraform",
                     Image: imageName,
                     Command: []string{
                         "/bin/bash",
@@ -99,6 +98,11 @@ func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map
                     },
                 },
             },
+            ImagePullSecrets: []v1.LocalObjectReference{
+                {
+                    Name: imagePullSecretName,
+                },
+            },
         },
     }
 
@@ -112,7 +116,3 @@ func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map
     log.Println("Pod created successfully.")
     return nil
 }
-
-
-
-

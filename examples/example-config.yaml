@@ -18,3 +18,37 @@
 #   --docker-username=<USERNAME> \
 #   --docker-password=<PASSWORD> \
 #   --docker-email=<EMAIL>
+
+
+apiVersion: alustan.io/v1alpha1
+kind: Terraform
+metadata:
+  name: example-terraformconfig
+  namespace: default
+spec:
+  variables:
+    var1: value1
+    var2: value2
+  backend:
+    provider: aws
+    s3: s3-store
+    dynamoDB: db-table
+    region: us-east-1
+  scripts:
+    apply: 
+     inline: |
+       terraform apply -auto-approve
+    destroy: 
+     inline: |
+        terraform destroy -auto-approve
+  gitRepo:
+    url: git@github.com:example/terraform-repo
+    branch: main
+    sshKeySecret:
+      name: my-ssh-secret
+      key: ssh-privatekey
+  containerRegistry:
+    imageName: docker.io/alustan/terrform (image name to be built and push by the controller)
+    secretRef:
+      name: my-dockerhub-secret
+      key: dockerhub-cred

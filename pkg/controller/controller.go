@@ -1,4 +1,4 @@
-package controller
+package container
 
 import (
 	"context"
@@ -31,17 +31,24 @@ type Controller struct {
 }
 
 type TerraformConfigSpec struct {
-	Variables map[string]string `json:"variables"`
-	Backend   map[string]string `json:"backend"`
-	Scripts   struct {
+	Variables       map[string]string `json:"variables"`
+	Backend         map[string]string `json:"backend"`
+	Scripts         struct {
 		Apply   string `json:"apply"`
 		Destroy string `json:"destroy"`
 	} `json:"scripts"`
 	GitRepo struct {
-		URL           string        `json:"url"`
-		Branch        string        `json:"branch"`
-		SSHKeySecret  SSHKeySecret  `json:"sshKeySecret"`
+		URL          string       `json:"url"`
+		Branch       string       `json:"branch"`
+		SSHKeySecret SSHKeySecret `json:"sshKeySecret"`
 	} `json:"gitRepo"`
+	ContainerRegistry struct {
+		ImageName string `json:"imageName"`
+		SecretRef struct {
+			Name string `json:"name"`
+			Key  string `json:"key"`
+		} `json:"secretRef"`
+	} `json:"containerRegistry"`
 }
 
 type SSHKeySecret struct {
@@ -139,8 +146,9 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 		return
 	}
 
-	imageName := fmt.Sprintf("terraform-image-%s", observed.Parent.Metadata.Name)
-	err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Namespace, configMapName, imageName)
+	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
+	containerSecret := observed.Parent.Spec.ContainerRegistry.SecretRef.Name
+	err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Namespace, configMapName, imageName, containerSecret)
 	if err != nil {
 		log.Printf("Error creating build job: %s\n", err.Error())
 		return
@@ -149,7 +157,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 	pvcName := "terraform-pvc"
 	var terraformErr error
 	for i := 0; i < maxRetries; i++ {
-		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Namespace, envVars, script, imageName, pvcName)
+		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Namespace, envVars, script, imageName, pvcName, containerSecret)
 		if terraformErr == nil {
 			break
 		}

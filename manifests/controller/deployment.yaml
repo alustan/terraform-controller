@@ -1,0 +1,23 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: terraform-controller
+  namespace: metacontroller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: terraform-controller
+  template:
+    metadata:
+      labels:
+        app: terraform-controller
+    spec:
+      serviceAccountName: terraform-controller-sa
+      containers:
+      - name: terraform-controller
+        image: alustan/terraform-controller:0.1.0
+        ports: 
+        - name: http
+          containerPort: 8080 

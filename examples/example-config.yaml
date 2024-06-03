@@ -1,0 +1,13 @@
+# kubectl create configmap terraform-scripts --from-file=apply-script=apply_script.sh --from-file=destroy-script=destroy_script.sh
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: terraform-scripts
+data:
+  apply-script.sh: |
+    #!/bin/bash
+    echo "This is the apply script"
+  destroy-script.sh: |
+    #!/bin/bash
+    echo "This is the destroy script"

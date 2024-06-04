@@ -2,12 +2,27 @@ package main
 
 import (
 	"log"
+	"fmt"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"controller/pkg/controller"
 )
 
+// Variables to be set by ldflags
+var (
+	version  string
+	commit   string
+	date     string
+	builtBy  string
+)
+
 func main() {
+	fmt.Printf("Version: %s\n", version)
+	fmt.Printf("Commit: %s\n", commit)
+	fmt.Printf("Date: %s\n", date)
+	fmt.Printf("Built by: %s\n", builtBy)
+	
 	r := gin.Default()
 	ctrl := controller.NewInClusterController() // Use NewInClusterController
 	go ctrl.Reconcile() // Start the reconciliation loop in a separate goroutine

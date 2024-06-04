@@ -1,7 +1,18 @@
 project_name: terraform-controller
+
+env:
+  - REPOSITORY_OWNER={{ if index .Env "REPOSITORY_OWNER" }}{{ .Env.REPOSITORY_OWNER }}{{ else }}local{{ end }}
+  - GC_FLAGS={{ if index .Env "DEBUG" }}all=-N -l{{ else }}-c 1{{ end }}
+  - REMOVE_DEBUG_SYMBOLS={{ if index .Env "DEBUG" }}{{ else }}-s -w{{ end }}
+
+before:
+  hooks:
+    - make setup
 builds:
-  - id: mybuild
+  - binary: terraform-controllers
     main: ./cmd/controller/main.go
+    env:
+      - CGO_ENABLED=0
     goos:
       - linux
       - darwin
@@ -12,19 +23,99 @@ builds:
     flags:
       - -v
     ldflags:
-      - -s -w
+      - -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser {{ .Env.REMOVE_DEBUG_SYMBOLS }}
+     
+    gcflags:
+      - '{{ .Env.GC_FLAGS }}'
+    ignore:
+      - goos: linux
+        goarch: '386'
 archives:
   - format: tar.gz
-    files:
-      - LICENSE
-      - README.md
-      - config.yaml
+    name_template: >-
+      {{ .ProjectName }}-{{ .Os }}-{{ .Arch }}
+    
+
+dockers:
+  - image_templates:
+      - "{{ .Env.REPOSITORY_OWNER }}io/{{ .ProjectName }}:v{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/terraform-controller/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/terraform-controller/{{ .ProjectName }}
+      - --label=org.opencontainers.image.version=v{{ .Version }}
+      - --label=org.opencontainers.image.created={{ .Date }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+      - --label=org.opencontainers.image.licenses=Apache-2.0
+  - image_templates:
+      - "{{ .Env.REPOSITORY_OWNER }}io/{{ .ProjectName }}:v{{ .Version }}-arm64v8"
+      - "ghcr.io/{{ .Env.REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-arm64v8"
+    goarch: arm64
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/arm64/v8
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/terraform-controller/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/terraform-controller/{{ .ProjectName }}
+      - --label=org.opencontainers.image.version=v{{ .Version }}
+      - --label=org.opencontainers.image.created={{ .Date }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+      - --label=org.opencontainers.image.licenses=Apache-2.0
+  - image_templates:
+      - "{{ .Env.REPOSITORY_OWNER }}io/{{ .ProjectName }}:v{{ .Version }}-armv7"
+      - "ghcr.io/{{ .Env.REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}-armv7"
+    goarch: arm64
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/arm/v7
+      - --label=org.opencontainers.image.title={{ .ProjectName }}
+      - --label=org.opencontainers.image.description={{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/terraform-controller/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/terraform-controller/{{ .ProjectName }}
+      - --label=org.opencontainers.image.version=v{{ .Version }}
+      - --label=org.opencontainers.image.created={{ .Date }}
+      - --label=org.opencontainers.image.revision={{ .FullCommit }}
+      - --label=org.opencontainers.image.licenses=Apache-2.0
+  
 checksum:
-  name_template: '{{ .ProjectName }}_checksums.txt'
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+release:
+  mode: append
+  footer: |
+    ## Docker Images
+    ### Github container registry
+    - `ghcr.io/{{ .Env.REPOSITORY_OWNER }}/{{ .ProjectName }}:v{{ .Version }}`
+  
+    ### Dockerhub 
+    - `{{ .Env.REPOSITORY_OWNER }}io/{{ .ProjectName }}:v{{ .Version }}`
+
+    ## Helm chart
+    ### Github container registry
+    - `ghcr.io/{{ .Env.REPOSITORY_OWNER }}/{{ .ProjectName }}-helm:{{ .Version }}`
+
+  extra_files:
+    - glob: manifests/controller/*
+
 changelog:
   sort: asc
   filters:
     exclude:
       - '^docs:'
       - '^test:'
+
+
+
+  
 

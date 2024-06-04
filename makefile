@@ -27,6 +27,9 @@ build:
 test:
 	$(GO) test -v $(TEST_DIR)/...
 
+setup:
+	./hack/setup.sh
+
 ## Run linting
 lint:
 	golangci-lint run ./...

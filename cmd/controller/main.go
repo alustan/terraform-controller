@@ -3,10 +3,9 @@ package main
 import (
 	"log"
 	"fmt"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"controller/pkg/controller"
+	"controller/pkg/controller" // Ensure this import matches the package declaration
 )
 
 // Variables to be set by ldflags
@@ -24,7 +23,7 @@ func main() {
 	fmt.Printf("Built by: %s\n", builtBy)
 	
 	r := gin.Default()
-	ctrl := controller.NewInClusterController() // Use NewInClusterController
+	ctrl := controller.NewInClusterController() 
 	go ctrl.Reconcile() // Start the reconciliation loop in a separate goroutine
 	r.POST("/sync", ctrl.ServeHTTP)
 

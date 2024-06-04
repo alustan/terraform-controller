@@ -28,8 +28,7 @@ spec:
                       type: string
                     dynamoDB:
                       type: string
-                    vaultAddress:
-                      type: string
+                    
                 scripts:
                   type: object
                   properties:

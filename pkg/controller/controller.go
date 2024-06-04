@@ -1,4 +1,4 @@
-package container
+package controller
 
 import (
 	"context"
@@ -33,22 +33,40 @@ type Controller struct {
 type TerraformConfigSpec struct {
 	Variables       map[string]string `json:"variables"`
 	Backend         map[string]string `json:"backend"`
-	Scripts         struct {
-		Apply   string `json:"apply"`
-		Destroy string `json:"destroy"`
-	} `json:"scripts"`
-	GitRepo struct {
-		URL          string       `json:"url"`
-		Branch       string       `json:"branch"`
-		SSHKeySecret SSHKeySecret `json:"sshKeySecret"`
-	} `json:"gitRepo"`
-	ContainerRegistry struct {
-		ImageName string `json:"imageName"`
-		SecretRef struct {
-			Name string `json:"name"`
-			Key  string `json:"key"`
-		} `json:"secretRef"`
-	} `json:"containerRegistry"`
+	Scripts         Scripts           `json:"scripts"`
+	GitRepo         GitRepo           `json:"gitRepo"`
+	ContainerRegistry ContainerRegistry `json:"containerRegistry"`
+}
+
+type Scripts struct {
+	Apply   Script `json:"apply"`
+	Destroy Script `json:"destroy"`
+}
+
+type Script struct {
+	Inline       string       `json:"inline"`
+	ConfigMapRef ConfigMapRef `json:"configMapRef"`
+}
+
+type ConfigMapRef struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
+}
+
+type GitRepo struct {
+	URL          string       `json:"url"`
+	Branch       string       `json:"branch"`
+	SSHKeySecret SSHKeySecret `json:"sshKeySecret"`
+}
+
+type ContainerRegistry struct {
+	ImageName string    `json:"imageName"`
+	SecretRef SecretRef `json:"secretRef"`
+}
+
+type SecretRef struct {
+	Name string `json:"name"`
+	Key  string `json:"key"`
 }
 
 type SSHKeySecret struct {
@@ -110,16 +128,12 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 func (c *Controller) handleSyncRequest(observed SyncRequest) {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables, observed.Parent.Spec.Backend)
 
-
-	// Determine the script type (inline or configMapRef)
 	var script map[string]interface{}
 	if observed.Parent.Spec.Scripts.Apply.Inline != "" {
-		// If script is provided inline
 		script = map[string]interface{}{
 			"inline": observed.Parent.Spec.Scripts.Apply.Inline,
 		}
 	} else if observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name != "" && observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key != "" {
-		// If script is provided via ConfigMap reference
 		script = map[string]interface{}{
 			"configMapRef": map[string]interface{}{
 				"name": observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name,
@@ -131,20 +145,18 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 		return
 	}
 
-// Extract the content of the script
-scriptContent, err := terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
-if err != nil {
-    log.Printf("Error extracting apply script: %v", err)
-    return
-}
+	scriptContent, err := terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
+	if err != nil {
+		log.Printf("Error extracting apply script: %v", err)
+		return
+	}
+
 	if observed.Finalizing {
 		if observed.Parent.Spec.Scripts.Destroy.Inline != "" {
-			// If script is provided inline
 			script = map[string]interface{}{
 				"inline": observed.Parent.Spec.Scripts.Destroy.Inline,
 			}
 		} else if observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Name != "" && observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Key != "" {
-			// If script is provided via ConfigMap reference
 			script = map[string]interface{}{
 				"configMapRef": map[string]interface{}{
 					"name": observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Name,
@@ -152,16 +164,19 @@ if err != nil {
 				},
 			}
 		} else {
-			log.Println("No script provided for apply operation")
+			log.Println("No script provided for destroy operation")
 			return
 		}
-	
-	// Extract the content of the script
-	scriptContent, err = terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
+
+		scriptContent, err = terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
+		if err != nil {
+			log.Printf("Error extracting destroy script: %v", err)
+			return
+		}
 	}
 
 	repoDir := "/tmp/" + observed.Parent.Metadata.Name
-	// Retrieve the SSH key from the secret
+
 	sshKey, err := util.GetDataFromSecret(c.clientset, observed.Parent.Metadata.Namespace, observed.Parent.Spec.GitRepo.SSHKeySecret.Name, observed.Parent.Spec.GitRepo.SSHKeySecret.Key)
 	if err != nil {
 		log.Fatalf("Failed to get SSH key from secret: %v", err)

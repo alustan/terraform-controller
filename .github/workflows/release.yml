@@ -42,14 +42,13 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install GoReleaser
+      
+      - name: GoReleaser
         uses: goreleaser/goreleaser-action@v5
+        id: run-goreleaser
         with:
           version: latest
-          args: release --rm-dist
-
-      - name: Run GoReleaser
-        run: goreleaser release --rm-dist
+          args: release --clean --timeout 30m
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_MAIN }}
 

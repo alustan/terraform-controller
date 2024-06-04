@@ -1,4 +1,4 @@
-name: Release helm chart
+name: Release Helm Chart
 
 on:
   push:
@@ -7,14 +7,13 @@ on:
 
 jobs:
   release-helm:
-    name: Release helm chart
+    name: Release Helm Chart
     env:
       HELM_EXPERIMENTAL_OCI: 1
     runs-on: ubuntu-22.04
     permissions:
       contents: write
       packages: write
-   
 
     steps:
       - name: Checkout code

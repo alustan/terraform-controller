@@ -46,8 +46,8 @@ dockers:
       - --platform=linux/amd64
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/terraform-controller/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/terraform-controller/{{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/alustan/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/alustan/{{ .ProjectName }}
       - --label=org.opencontainers.image.version=v{{ .Version }}
       - --label=org.opencontainers.image.created={{ .Date }}
       - --label=org.opencontainers.image.revision={{ .FullCommit }}
@@ -62,8 +62,8 @@ dockers:
       - --platform=linux/arm64/v8
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/terraform-controller/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/terraform-controller/{{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/alustan/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/alustan/{{ .ProjectName }}
       - --label=org.opencontainers.image.version=v{{ .Version }}
       - --label=org.opencontainers.image.created={{ .Date }}
       - --label=org.opencontainers.image.revision={{ .FullCommit }}
@@ -78,8 +78,8 @@ dockers:
       - --platform=linux/arm/v7
       - --label=org.opencontainers.image.title={{ .ProjectName }}
       - --label=org.opencontainers.image.description={{ .ProjectName }}
-      - --label=org.opencontainers.image.url=https://github.com/terraform-controller/{{ .ProjectName }}
-      - --label=org.opencontainers.image.source=https://github.com/terraform-controller/{{ .ProjectName }}
+      - --label=org.opencontainers.image.url=https://github.com/alustan/{{ .ProjectName }}
+      - --label=org.opencontainers.image.source=https://github.com/alustan/{{ .ProjectName }}
       - --label=org.opencontainers.image.version=v{{ .Version }}
       - --label=org.opencontainers.image.created={{ .Date }}
       - --label=org.opencontainers.image.revision={{ .FullCommit }}

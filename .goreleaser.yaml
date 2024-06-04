@@ -105,9 +105,6 @@ release:
     ### Github container registry
     - `ghcr.io/{{ .Env.REPOSITORY_OWNER }}/{{ .ProjectName }}-helm:{{ .Version }}`
 
-  extra_files:
-    - glob: manifests/controller/*
-
 changelog:
   sort: asc
   filters:

@@ -1,3 +1,4 @@
-*
-!Dockerfile*
-!bin/*
+.git
+.github
+.env
+bin/*

@@ -15,7 +15,7 @@ PKG_DIR := ./pkg
 TEST_DIR := ./test
 
 # Targets
-.PHONY: all build test lint clean docker-build docker-push deploy undeploy
+.PHONY: all build test setup lint clean docker-build docker-push 
 
 all: build
 
@@ -47,21 +47,7 @@ docker-build:
 docker-push:
 	$(DOCKER) push $(DOCKER_IMAGE)
 
-## Deploy application to Kubernetes
-deploy: docker-build docker-push
-	$(KUBECTL) apply -f k8s/
 
-## Undeploy application from Kubernetes
-undeploy:
-	$(KUBECTL) delete -f k8s/
-
-## Show logs from the application pod
-logs:
-	$(KUBECTL) logs -l app=$(APP_NAME) -n $(K8S_NAMESPACE) -f
-
-## Port forward to the application pod
-port-forward:
-	$(KUBECTL) port-forward deployment/$(K8S_DEPLOYMENT) 8080:8080 -n $(K8S_NAMESPACE)
 
 ## Display help message
 help:
@@ -75,8 +61,5 @@ help:
 	@echo "  clean         Clean build artifacts"
 	@echo "  docker-build  Build Docker image"
 	@echo "  docker-push   Push Docker image to registry"
-	@echo "  deploy        Deploy application to Kubernetes"
-	@echo "  undeploy      Undeploy application from Kubernetes"
-	@echo "  logs          Show logs from the application pod"
-	@echo "  port-forward  Port forward to the application pod"
+	@echo "  setup         setup script before build"
 	@echo "  help          Display this help message"

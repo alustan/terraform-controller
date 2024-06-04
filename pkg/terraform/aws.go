@@ -1,14 +1,13 @@
 package terraform
 
 import (
-	"fmt"
 	"log"
-
+     "fmt"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 )
 
 // SetupAWSBackend sets up AWS S3 and DynamoDB for Terraform state storage and locking
@@ -18,7 +17,7 @@ func SetupAWSBackend(backendConfig map[string]string) error {
 		Region: aws.String(backendConfig["region"]),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to create AWS session: %v", err)
+		return logErrorAndReturn("failed to create AWS session: %v", err)
 	}
 
 	// Set up S3 for state storage
@@ -41,7 +40,7 @@ func setupS3(sess *session.Session, backendConfig map[string]string) error {
 		Bucket: aws.String(backendConfig["s3"]),
 	})
 	if err != nil && !isBucketAlreadyOwnedByYouError(err) {
-		return fmt.Errorf("failed to create S3 bucket: %v", err)
+		return logErrorAndReturn("failed to create S3 bucket: %v", err)
 	}
 	log.Printf("S3 bucket %s is ready", backendConfig["s3"])
 	return nil
@@ -70,7 +69,7 @@ func setupDynamoDB(sess *session.Session, backendConfig map[string]string) error
 		},
 	})
 	if err != nil && !isTableAlreadyExistsError(err) {
-		return fmt.Errorf("failed to create DynamoDB table: %v", err)
+		return logErrorAndReturn("failed to create DynamoDB table: %v", err)
 	}
 	log.Printf("DynamoDB table %s is ready", backendConfig["dynamoDB"])
 	return nil
@@ -90,4 +89,11 @@ func isTableAlreadyExistsError(err error) bool {
 		return true
 	}
 	return false
+}
+
+// logErrorAndReturn logs the error and returns it
+func logErrorAndReturn(format string, args ...interface{}) error {
+	err := fmt.Errorf(format, args...)
+	log.Println(err)
+	return err
 }

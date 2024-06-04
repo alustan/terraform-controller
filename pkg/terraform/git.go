@@ -1,49 +1,32 @@
 package terraform
 
 import (
-	"context"
-	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport"
 	gitssh "gopkg.in/src-d/go-git.v4/plumbing/transport/ssh"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 )
 
-// getSSHKeyFromSecret retrieves the SSH key from a Kubernetes Secret
-func getSSHKeyFromSecret(clientset *kubernetes.Clientset, namespace, secretName, keyName string) (string, error) {
-	secret, err := clientset.CoreV1().Secrets(namespace).Get(context.Background(), secretName, metav1.GetOptions{})
-	if err != nil {
-		return "", fmt.Errorf("failed to get secret: %v", err)
-	}
-
-	sshKey, ok := secret.Data[keyName]
-	if !ok {
-		return "", fmt.Errorf("key %s not found in secret %s", keyName, secretName)
-	}
-
-	return string(sshKey), nil
-}
-
-// cloneOrPullRepo clones the repository if it does not exist, or pulls the latest changes if it does.
+// CloneOrPullRepo clones the repository if it does not exist, or pulls the latest changes if it does.
 // It uses the SSH key for authentication if provided.
-func cloneOrPullRepo(repoURL, branch, repoDir, sshKey string) error {
+func CloneOrPullRepo(repoURL, branch, repoDir, sshKey string) error {
 	var repo *git.Repository
 	var err error
 	var auth transport.AuthMethod
 
+	log.Printf("Starting CloneOrPullRepo for repo: %s, branch: %s, directory: %s", repoURL, branch, repoDir)
+
 	// If an SSH key is provided, set up the authentication
 	if sshKey != "" {
+		log.Println("Setting up SSH authentication")
 		signer, err := ssh.ParsePrivateKey([]byte(sshKey))
 		if err != nil {
-			return fmt.Errorf("failed to parse SSH key: %v", err)
+			log.Printf("Failed to parse SSH key: %v", err)
+			return err
 		}
 
 		auth = &gitssh.PublicKeys{
@@ -53,6 +36,7 @@ func cloneOrPullRepo(repoURL, branch, repoDir, sshKey string) error {
 	}
 
 	if _, err = os.Stat(repoDir); os.IsNotExist(err) {
+		log.Printf("Directory %s does not exist. Cloning repository...", repoDir)
 		// Clone the repository
 		repo, err = git.PlainClone(repoDir, false, &git.CloneOptions{
 			URL:           repoURL,
@@ -60,33 +44,38 @@ func cloneOrPullRepo(repoURL, branch, repoDir, sshKey string) error {
 			Auth:          auth,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to clone repository: %v", err)
+			log.Printf("Failed to clone repository: %v", err)
+			return err
 		}
+		log.Println("Repository cloned successfully.")
 	} else {
+		log.Printf("Directory %s exists. Opening repository...", repoDir)
 		// Open the existing repository and pull the latest changes
 		repo, err = git.PlainOpen(repoDir)
 		if err != nil {
-			return fmt.Errorf("failed to open repository: %v", err)
+			log.Printf("Failed to open repository: %v", err)
+			return err
 		}
 
 		worktree, err := repo.Worktree()
 		if err != nil {
-			return fmt.Errorf("failed to get worktree: %v", err)
+			log.Printf("Failed to get worktree: %v", err)
+			return err
 		}
 
+		log.Println("Pulling latest changes from repository...")
 		err = worktree.Pull(&git.PullOptions{
 			ReferenceName: plumbing.NewBranchReferenceName(branch),
 			Auth:          auth,
 			Force:         true,
 		})
 		if err != nil && err != git.NoErrAlreadyUpToDate {
-			return fmt.Errorf("failed to pull repository: %v", err)
+			log.Printf("Failed to pull repository: %v", err)
+			return err
 		}
+		log.Println("Repository pulled successfully.")
 	}
 
+	log.Println("CloneOrPullRepo completed successfully.")
 	return nil
 }
-
-
-
-

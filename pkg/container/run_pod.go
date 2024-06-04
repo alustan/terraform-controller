@@ -2,7 +2,6 @@ package container
 
 import (
     "context"
-    "fmt"
     "log"
 
     v1 "k8s.io/api/core/v1"
@@ -39,7 +38,7 @@ func EnsurePVC(clientset *kubernetes.Clientset, namespace, pvcName string) error
     _, err = clientset.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(), pvc, metav1.CreateOptions{})
     if err != nil {
         log.Printf("Failed to create PVC: %v", err)
-        return fmt.Errorf("failed to create PVC: %v", err)
+        return err
     }
 
     log.Println("PVC created successfully.")
@@ -50,7 +49,8 @@ func EnsurePVC(clientset *kubernetes.Clientset, namespace, pvcName string) error
 func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map[string]string, script, imageName, pvcName, imagePullSecretName string) error {
     err := EnsurePVC(clientset, namespace, pvcName)
     if err != nil {
-        return fmt.Errorf("failed to ensure PVC: %v", err)
+        log.Printf("Failed to ensure PVC: %v", err)
+        return err
     }
 
     log.Printf("Creating Pod in namespace: %s with image: %s", namespace, imageName)
@@ -77,7 +77,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map
                     Command: []string{
                         "/bin/bash",
                         "-c",
-                        fmt.Sprintf("chmod +x %s && exec %s", script, script),
+                        "chmod +x " + script + " && exec " + script,
                     },
                     Env: env,
                     VolumeMounts: []v1.VolumeMount{
@@ -111,7 +111,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map
     _, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
     if err != nil {
         log.Printf("Failed to create Pod: %v", err)
-        return fmt.Errorf("failed to create Pod: %v", err)
+        return err
     }
 
     log.Println("Pod created successfully.")

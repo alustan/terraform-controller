@@ -3,7 +3,6 @@ package container
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -111,21 +110,66 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 func (c *Controller) handleSyncRequest(observed SyncRequest) {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables, observed.Parent.Spec.Backend)
 
-	script := observed.Parent.Spec.Scripts.Apply
-	if observed.Finalizing {
-		script = observed.Parent.Spec.Scripts.Destroy
+
+	// Determine the script type (inline or configMapRef)
+	var script map[string]interface{}
+	if observed.Parent.Spec.Scripts.Apply.Inline != "" {
+		// If script is provided inline
+		script = map[string]interface{}{
+			"inline": observed.Parent.Spec.Scripts.Apply.Inline,
+		}
+	} else if observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name != "" && observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key != "" {
+		// If script is provided via ConfigMap reference
+		script = map[string]interface{}{
+			"configMapRef": map[string]interface{}{
+				"name": observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name,
+				"key":  observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key,
+			},
+		}
+	} else {
+		log.Println("No script provided for apply operation")
+		return
 	}
 
-	repoDir := fmt.Sprintf("/tmp/%s", observed.Parent.Metadata.Name)
+// Extract the content of the script
+scriptContent, err := terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
+if err != nil {
+    log.Printf("Error extracting apply script: %v", err)
+    return
+}
+	if observed.Finalizing {
+		if observed.Parent.Spec.Scripts.Destroy.Inline != "" {
+			// If script is provided inline
+			script = map[string]interface{}{
+				"inline": observed.Parent.Spec.Scripts.Destroy.Inline,
+			}
+		} else if observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Name != "" && observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Key != "" {
+			// If script is provided via ConfigMap reference
+			script = map[string]interface{}{
+				"configMapRef": map[string]interface{}{
+					"name": observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Name,
+					"key":  observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Key,
+				},
+			}
+		} else {
+			log.Println("No script provided for apply operation")
+			return
+		}
+	
+	// Extract the content of the script
+	scriptContent, err = terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
+	}
+
+	repoDir := "/tmp/" + observed.Parent.Metadata.Name
 	// Retrieve the SSH key from the secret
-	sshKey, err := terraform.getSSHKeyFromSecret(c.clientset, observed.Parent.Metadata.Namespace, observed.Parent.Spec.GitRepo.SSHKeySecret.Name, observed.Parent.Spec.GitRepo.SSHKeySecret.Key)
+	sshKey, err := util.GetDataFromSecret(c.clientset, observed.Parent.Metadata.Namespace, observed.Parent.Spec.GitRepo.SSHKeySecret.Name, observed.Parent.Spec.GitRepo.SSHKeySecret.Key)
 	if err != nil {
 		log.Fatalf("Failed to get SSH key from secret: %v", err)
 	}
 
-	err := terraform.cloneOrPullRepo(observed.Parent.Spec.GitRepo.URL, observed.Parent.Spec.GitRepo.Branch, repoDir, sshKey)
+	err = terraform.CloneOrPullRepo(observed.Parent.Spec.GitRepo.URL, observed.Parent.Spec.GitRepo.Branch, repoDir, sshKey)
 	if err != nil {
-		log.Printf("Error cloning Git repository: %s\n", err.Error())
+		log.Printf("Error cloning Git repository: %v", err)
 		return
 	}
 
@@ -133,36 +177,35 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 	if provider == "aws" {
 		err = terraform.SetupAWSBackend(observed.Parent.Spec.Backend)
 		if err != nil {
-			log.Printf("Error setting up AWS backend: %s\n", err.Error())
+			log.Printf("Error setting up AWS backend: %v", err)
 			return
 		}
-	 else {
-		log.Printf("Unsupported backend provider: %s\n", provider)
+	} else {
+		log.Printf("Unsupported backend provider: %v", provider)
 		return
 	}
 
 	configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Namespace, repoDir)
 	if err != nil {
-		log.Printf("Error creating Dockerfile ConfigMap: %s\n", err.Error())
+		log.Printf("Error creating Dockerfile ConfigMap: %v", err)
 		return
 	}
 
 	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
-	containerSecret := observed.Parent.Spec.ContainerRegistry.SecretRef.Name
-	err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Namespace, configMapName, imageName, containerSecret)
+	err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
 	if err != nil {
-		log.Printf("Error creating build job: %s\n", err.Error())
+		log.Printf("Error creating build job: %v", err)
 		return
 	}
 
 	pvcName := "terraform-pvc"
 	var terraformErr error
 	for i := 0; i < maxRetries; i++ {
-		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Namespace, envVars, script, imageName, pvcName, containerSecret)
+		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Namespace, envVars, scriptContent, imageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
 		if terraformErr == nil {
 			break
 		}
-		log.Printf("Retrying Terraform command due to error: %s\n", terraformErr.Error())
+		log.Printf("Retrying Terraform command due to error: %v", terraformErr)
 		time.Sleep(2 * time.Second)
 	}
 
@@ -177,11 +220,11 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 
 	err = kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
 	if err != nil {
-		log.Printf("Error updating status: %s\n", err.Error())
+		log.Printf("Error updating status: %v", err)
 		return
 	}
 }
-}
+
 func (c *Controller) Reconcile() {
 	for {
 		c.reconcileLoop()
@@ -196,7 +239,7 @@ func (c *Controller) reconcileLoop() {
 		Resource: "terraforms",
 	}).Namespace("").List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		log.Printf("Error fetching Terraform resources: %s\n", err.Error())
+		log.Printf("Error fetching Terraform resources: %v", err)
 		return
 	}
 
@@ -204,12 +247,12 @@ func (c *Controller) reconcileLoop() {
 		var observed SyncRequest
 		raw, err := item.MarshalJSON()
 		if err != nil {
-			log.Printf("Error marshalling item: %s\n", err.Error())
+			log.Printf("Error marshalling item: %v", err)
 			continue
 		}
 		err = json.Unmarshal(raw, &observed)
 		if err != nil {
-			log.Printf("Error unmarshalling item: %s\n", err.Error())
+			log.Printf("Error unmarshalling item: %v", err)
 			continue
 		}
 

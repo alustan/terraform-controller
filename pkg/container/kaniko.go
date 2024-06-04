@@ -2,7 +2,7 @@ package container
 
 import (
 	"context"
-	"fmt"
+	"log"
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -25,7 +25,7 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 							Image: "gcr.io/kaniko-project/executor:v1.23.0",
 							Args: []string{
 								"--dockerfile=/config/Dockerfile",
-								fmt.Sprintf("--destination=%s", imageName),
+								"--destination=" + imageName,
 								"--context=/workspace/",
 								"--docker-credential-directory=/kaniko/.docker",
 							},
@@ -80,8 +80,10 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 
 	_, err := clientset.BatchV1().Jobs(namespace).Create(context.Background(), job, metav1.CreateOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to create Job: %v", err)
+		log.Printf("Failed to create Job: %v", err)
+		return err
 	}
 
+	log.Println("Job created successfully.")
 	return nil
 }

@@ -2,11 +2,11 @@ package container
 
 import (
 	"context"
+	"log"
 	"fmt"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	
 )
 
 func CreateDockerfileConfigMap(clientset *kubernetes.Clientset, namespace, terraformDir string) (string, error) {
@@ -55,7 +55,8 @@ CMD ["/bin/bash"]
 
 	_, err := clientset.CoreV1().ConfigMaps(namespace).Create(context.Background(), configMap, metav1.CreateOptions{})
 	if err != nil {
-		return "", fmt.Errorf("failed to create ConfigMap: %v", err)
+		log.Printf("Failed to create ConfigMap: %v", err)
+		return "", err
 	}
 
 	return configMap.Name, nil

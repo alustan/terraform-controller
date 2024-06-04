@@ -70,7 +70,7 @@ The project architecture consists of the following main components:
 
 #### in-cluster container build
 
-- Using kiniko
+- Using kaniko
 
 #### Workflow
 
@@ -167,7 +167,7 @@ spec:
      inline: |
         terraform destroy -auto-approve
   gitRepo:
-    url: git@github.com:example/terraform-repo//terraform
+    url: git@github.com:example/terraform-repo/terraform
     branch: main
     sshKeySecret:
       name: my-ssh-secret
@@ -209,8 +209,10 @@ spec:
     var1: value1
     var2: value2
   backend:
-    provider: vault
-    vaultAddress: http://vault:8200
+    provider: aws
+    s3: s3-store
+    dynamoDB: db-table
+    region: us-east-1
     
   scripts:
     apply: 

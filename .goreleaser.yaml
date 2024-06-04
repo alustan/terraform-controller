@@ -1,41 +1,30 @@
-# # .goreleaser.yaml
-# project_name: my-awesome-project
-# builds:
-#   - id: mybuild
-#     main: ./cmd/myapp/main.go
-#     goos:
-#       - linux
-#       - darwin
-#       - windows
-#     goarch:
-#       - amd64
-#       - arm64
-#     flags:
-#       - -v
-#     ldflags:
-#       - -s -w
-# archives:
-#   - format: tar.gz
-#     files:
-#       - LICENSE
-#       - README.md
-#       - config.yaml
-# checksum:
-#   name_template: '{{ .ProjectName }}_checksums.txt'
-# changelog:
-#   sort: asc
-#   filters:
-#     exclude:
-#       - '^docs:'
-#       - '^test:'
-# dockers:
-#   - image: ghcr.io/yourusername/my-awesome-project:latest
-#     dockerfile: Dockerfile
-#     goos: linux
-#     goarch: amd64
-# release:
-#   github:
-#     owner: yourusername
-#     name: my-awesome-project
-#     draft: true
-#     prerelease: true
+project_name: terraform-controller
+builds:
+  - id: mybuild
+    main: ./cmd/controller/main.go
+    goos:
+      - linux
+      - darwin
+      
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -v
+    ldflags:
+      - -s -w
+archives:
+  - format: tar.gz
+    files:
+      - LICENSE
+      - README.md
+      - config.yaml
+checksum:
+  name_template: '{{ .ProjectName }}_checksums.txt'
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+

@@ -4,6 +4,13 @@ metadata:
   name: terraforms.alustan.io  
 spec:
   group: alustan.io
+  names:
+    plural: terraforms
+    singular: terraform
+    kind: Terraform
+    shortNames:
+      - tf
+  scope: Namespaced
   versions:
     - name: v1alpha1
       served: true
@@ -22,8 +29,7 @@ spec:
                   properties:
                     provider:
                       type: string
-                  additionalProperties:
-                    type: string
+                  additionalProperties: true
                 scripts:
                   type: object
                   properties:
@@ -84,10 +90,3 @@ spec:
                   type: string
                 message:
                   type: string
-  scope: Namespaced
-  names:
-    plural: terraforms
-    singular: terraform
-    kind: Terraform
-    shortNames:
-      - tf

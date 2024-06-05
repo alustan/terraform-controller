@@ -1,7 +1,6 @@
 project_name: terraform-controller
 
 env:
-  - REPOSITORY_OWNER={{ if index .Env "REPOSITORY_OWNER" }}{{ .Env.REPOSITORY_OWNER }}{{ else }}local{{ end }}
   - GC_FLAGS={{ if index .Env "DEBUG" }}all=-N -l{{ else }}-c 1{{ end }}
   - REMOVE_DEBUG_SYMBOLS={{ if index .Env "DEBUG" }}{{ else }}-s -w{{ end }}
 
@@ -35,8 +34,6 @@ archives:
     name_template: >-
       {{ .ProjectName }}-{{ .Os }}-{{ .Arch }}
     
-
-  
 checksum:
   name_template: 'checksums.txt'
 
@@ -46,9 +43,13 @@ snapshot:
 release:
   mode: append
   footer: |
+    ## Docker Image
+   
+    - `docker.io/alustan/{{ .ProjectName }}:v{{ .Version }}`
+
     ## Helm chart
-    ### Github container registry
-    - `ghcr.io/{{ .Env.REPOSITORY_OWNER }}/{{ .ProjectName }}-helm:{{ .Version }}`
+  
+    - `ghcr.io/alustan/{{ .ProjectName }}-helm:{{ .Version }}`
 
 changelog:
   sort: asc

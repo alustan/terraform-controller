@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"controller/pkg/util"
 	"controller/pkg/controller" // Ensure this import matches the package declaration
 )
 
@@ -24,7 +25,8 @@ func main() {
 	
 	r := gin.Default()
 	ctrl := controller.NewInClusterController() 
-	go ctrl.Reconcile() // Start the reconciliation loop in a separate goroutine
+	syncInterval := util.GetSyncInterval()
+	go ctrl.Reconcile(syncInterval) // Start the reconciliation loop in a separate goroutine
 	r.POST("/sync", ctrl.ServeHTTP)
 
 	log.Println("Starting server on port 8080...")

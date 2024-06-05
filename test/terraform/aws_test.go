@@ -56,8 +56,8 @@ func TestSetupAWSBackend(t *testing.T) {
     mockDynamoDB.On("CreateTable", mock.Anything).Return(nil, nil)
 
     // Set the mocked clients
-    terraform.SetupS3(mockS3, backendConfig)
-    terraform.SetupDynamoDB(mockDynamoDB, backendConfig)
+    terraform.SetupS3Func(mockS3, backendConfig)
+    terraform.SetupDynamoDBFunc(mockDynamoDB, backendConfig)
 
     err := terraform.SetupAWSBackend(backendConfig)
     assert.NoError(t, err)

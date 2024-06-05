@@ -1,5 +1,3 @@
-
-
 package terraform
 
 import (
@@ -15,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 )
 
-
 // SetupAWSBackend sets up AWS S3 and DynamoDB for Terraform state storage and locking
 func SetupAWSBackend(backendConfig map[string]string) error {
 	sess, err := session.NewSession(&aws.Config{
@@ -26,12 +23,12 @@ func SetupAWSBackend(backendConfig map[string]string) error {
 	}
 
 	// Set up S3 for state storage
-	if err := SetupS3(sess, backendConfig); err != nil {
+	if err := SetupS3WithClient(s3.New(sess), backendConfig); err != nil {
 		return err
 	}
 
 	// Set up DynamoDB for state locking
-	if err := SetupDynamoDB(sess, backendConfig); err != nil {
+	if err := SetupDynamoDBWithClient(dynamodb.New(sess), backendConfig); err != nil {
 		return err
 	}
 
@@ -110,6 +107,8 @@ func logErrorAndReturn(format string, args ...interface{}) error {
 	return err
 }
 
-
-var SetupS3 = SetupS3WithClient
-var SetupDynamoDB = SetupDynamoDBWithClient
+// Dependency injection variables
+var (
+	SetupS3Func       = SetupS3WithClient
+	SetupDynamoDBFunc = SetupDynamoDBWithClient
+)

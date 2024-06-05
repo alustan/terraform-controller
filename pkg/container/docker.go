@@ -2,14 +2,14 @@ package container
 
 import (
 	"context"
-	"log"
 	"fmt"
+	"log"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreateDockerfileConfigMap(clientset *kubernetes.Clientset, namespace, terraformDir string) (string, error) {
+func CreateDockerfileConfigMap(clientset *kubernetes.Clientset, namespace, terraformDir, additionalTools string) (string, error) {
 	content := fmt.Sprintf(`
 FROM ubuntu:latest
 
@@ -31,18 +31,14 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
     install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \\
     rm kubectl
 
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \\
-    apt install unzip && \\
-    unzip awscliv2.zip && \\
-    ./aws/install && \\
-    rm -rf awscliv2.zip aws
+%s
 
 WORKDIR /app
 
 COPY %s/. ./
 
 CMD ["/bin/bash"]
-`, terraformDir)
+`, additionalTools, terraformDir)
 
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
@@ -61,3 +57,4 @@ CMD ["/bin/bash"]
 
 	return configMap.Name, nil
 }
+

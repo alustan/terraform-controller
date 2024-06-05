@@ -118,6 +118,10 @@ func NewInClusterController() *Controller {
 }
 
 func (c *Controller) ServeHTTP(r *gin.Context) {
+	if r.Request.Method == http.MethodGet && r.Request.URL.Path == "/" {
+		r.String(http.StatusOK, "OK")
+		return
+	}
 	var observed SyncRequest
 	err := json.NewDecoder(r.Request.Body).Decode(&observed)
 	if err != nil {
@@ -128,6 +132,7 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 	c.handleSyncRequest(observed)
 }
+
 
 func (c *Controller) handleSyncRequest(observed SyncRequest) {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables, observed.Parent.Spec.Backend)

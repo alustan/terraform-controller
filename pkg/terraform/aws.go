@@ -1,18 +1,23 @@
+
+
 package terraform
 
 import (
+	"fmt"
 	"log"
-     "fmt"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
+	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 )
+
 
 // SetupAWSBackend sets up AWS S3 and DynamoDB for Terraform state storage and locking
 func SetupAWSBackend(backendConfig map[string]string) error {
-	// Initialize a session in the specified region
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String(backendConfig["region"]),
 	})
@@ -21,22 +26,27 @@ func SetupAWSBackend(backendConfig map[string]string) error {
 	}
 
 	// Set up S3 for state storage
-	if err := setupS3(sess, backendConfig); err != nil {
+	if err := SetupS3(sess, backendConfig); err != nil {
 		return err
 	}
 
 	// Set up DynamoDB for state locking
-	if err := setupDynamoDB(sess, backendConfig); err != nil {
+	if err := SetupDynamoDB(sess, backendConfig); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// setupS3 creates the S3 bucket if it does not exist
-func setupS3(sess *session.Session, backendConfig map[string]string) error {
-	svc := s3.New(sess)
-	_, err := svc.CreateBucket(&s3.CreateBucketInput{
+// SetupS3 creates the S3 bucket if it does not exist
+func SetupS3(sess *session.Session, backendConfig map[string]string) error {
+	s3Client := s3.New(sess)
+	return SetupS3WithClient(s3Client, backendConfig)
+}
+
+// SetupS3WithClient creates the S3 bucket if it does not exist, using a provided S3 client
+func SetupS3WithClient(s3Client s3iface.S3API, backendConfig map[string]string) error {
+	_, err := s3Client.CreateBucket(&s3.CreateBucketInput{
 		Bucket: aws.String(backendConfig["s3"]),
 	})
 	if err != nil && !isBucketAlreadyOwnedByYouError(err) {
@@ -46,10 +56,15 @@ func setupS3(sess *session.Session, backendConfig map[string]string) error {
 	return nil
 }
 
-// setupDynamoDB creates the DynamoDB table if it does not exist
-func setupDynamoDB(sess *session.Session, backendConfig map[string]string) error {
-	svc := dynamodb.New(sess)
-	_, err := svc.CreateTable(&dynamodb.CreateTableInput{
+// SetupDynamoDB creates the DynamoDB table if it does not exist
+func SetupDynamoDB(sess *session.Session, backendConfig map[string]string) error {
+	dynamoDBClient := dynamodb.New(sess)
+	return SetupDynamoDBWithClient(dynamoDBClient, backendConfig)
+}
+
+// SetupDynamoDBWithClient creates the DynamoDB table if it does not exist, using a provided DynamoDB client
+func SetupDynamoDBWithClient(dynamoDBClient dynamodbiface.DynamoDBAPI, backendConfig map[string]string) error {
+	_, err := dynamoDBClient.CreateTable(&dynamodb.CreateTableInput{
 		TableName: aws.String(backendConfig["dynamoDB"]),
 		KeySchema: []*dynamodb.KeySchemaElement{
 			{
@@ -75,7 +90,6 @@ func setupDynamoDB(sess *session.Session, backendConfig map[string]string) error
 	return nil
 }
 
-// isBucketAlreadyOwnedByYouError checks if the error is due to the bucket already being owned by the user
 func isBucketAlreadyOwnedByYouError(err error) bool {
 	if aerr, ok := err.(awserr.Error); ok && aerr.Code() == s3.ErrCodeBucketAlreadyOwnedByYou {
 		return true
@@ -83,7 +97,6 @@ func isBucketAlreadyOwnedByYouError(err error) bool {
 	return false
 }
 
-// isTableAlreadyExistsError checks if the error is due to the table already existing
 func isTableAlreadyExistsError(err error) bool {
 	if aerr, ok := err.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeResourceInUseException {
 		return true
@@ -91,9 +104,12 @@ func isTableAlreadyExistsError(err error) bool {
 	return false
 }
 
-// logErrorAndReturn logs the error and returns it
 func logErrorAndReturn(format string, args ...interface{}) error {
 	err := fmt.Errorf(format, args...)
 	log.Println(err)
 	return err
 }
+
+
+var SetupS3 = SetupS3WithClient
+var SetupDynamoDB = SetupDynamoDBWithClient

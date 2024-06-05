@@ -1,17 +1,15 @@
 # Variables
 APP_NAME := terraform-controller
 DOCKER_IMAGE := $(APP_NAME):latest
-K8S_NAMESPACE := default
-K8S_DEPLOYMENT := terraform-controller-deployment
+
 
 # Commands
 GO := go
 DOCKER := docker
-KUBECTL := kubectl
+
 
 # Directories
 SRC_DIR := ./cmd/controller
-PKG_DIR := ./pkg
 TEST_DIR := ./test
 
 # Targets

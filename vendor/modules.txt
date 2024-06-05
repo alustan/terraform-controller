@@ -77,7 +77,9 @@ github.com/aws/aws-sdk-go/private/protocol/restjson
 github.com/aws/aws-sdk-go/private/protocol/restxml
 github.com/aws/aws-sdk-go/private/protocol/xml/xmlutil
 github.com/aws/aws-sdk-go/service/dynamodb
+github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface
 github.com/aws/aws-sdk-go/service/s3
+github.com/aws/aws-sdk-go/service/s3/s3iface
 github.com/aws/aws-sdk-go/service/sso
 github.com/aws/aws-sdk-go/service/sso/ssoiface
 github.com/aws/aws-sdk-go/service/ssooidc
@@ -364,10 +366,13 @@ github.com/src-d/gcfg
 github.com/src-d/gcfg/scanner
 github.com/src-d/gcfg/token
 github.com/src-d/gcfg/types
+# github.com/stretchr/objx v0.5.2
+## explicit; go 1.20
+github.com/stretchr/objx
 # github.com/stretchr/testify v1.9.0
 ## explicit; go 1.17
 github.com/stretchr/testify/assert
-github.com/stretchr/testify/require
+github.com/stretchr/testify/mock
 # github.com/twitchyliquid64/golang-asm v0.15.1
 ## explicit; go 1.13
 github.com/twitchyliquid64/golang-asm/asm/arch

@@ -1,4 +1,4 @@
-package plugin
+package aws
 
 import (
     "fmt"
@@ -105,11 +105,3 @@ func logErrorAndReturn(format string, args ...interface{}) error {
     log.Println(err)
     return err
 }
-
-
-// Dependency injection variables
-var (
-	SetupS3Func       = SetupS3WithClient
-	SetupDynamoDBFunc = SetupDynamoDBWithClient
-)
-

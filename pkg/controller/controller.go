@@ -12,6 +12,8 @@ import (
 	"controller/pkg/kubernetes"
 	"controller/pkg/terraform"
 	"controller/pkg/util"
+	"controller/plugin"
+
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -199,32 +201,40 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 
 	backend := observed.Parent.Spec.Backend
 
+	var provider plugin.BackendProvider
+
 	if backend == nil || len(backend) == 0 {
 		// No backend provided, continue without backend setup
 		log.Println("No backend provided, continuing without backend setup")
 	} else {
-		provider, providerExists := backend["provider"]
-		if !providerExists || provider == "" {
+		providerType, providerExists := backend["provider"]
+
+		if !providerExists || providerType == "" {
 			log.Println("Backend provided without specifying provider, continuing without backend setup")
-		} else if provider == "aws" {
-			err = terraform.SetupAWSBackend(backend)
-			if err != nil {
-				log.Printf("Error setting up AWS backend: %v", err)
-				return
-			}
 		} else {
-			log.Printf("Unsupported backend provider: %v", provider)
-			return
-		}
+			// Get the appropriate provider
+			provider, err = plugin.GetProvider(providerType)
+			if err != nil {
+				log.Fatalf("Error getting provider: %v", err)
+			}
+		
+		   err = provider.SetupBackend(backend)
+            if err != nil {
+                log.Printf("Error setting up %s backend: %v", providerType, err)
+                return
+            }
+
+		} 
 	}
 
-   configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Namespace, repoDir)
+	
+	configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Namespace, repoDir, provider.GetDockerfileAdditions())
 	if err != nil {
 		log.Printf("Error creating Dockerfile ConfigMap: %v", err)
 		return
 	}
 
-	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
+   imageName := observed.Parent.Spec.ContainerRegistry.ImageName
 	err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
 	if err != nil {
 		log.Printf("Error creating build job: %v", err)

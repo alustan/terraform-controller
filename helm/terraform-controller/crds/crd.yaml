@@ -22,12 +22,8 @@ spec:
                   properties:
                     provider:
                       type: string
-                    region:
-                      type: string
-                    s3:
-                      type: string
-                    dynamoDB:
-                      type: string
+                  additionalProperties:
+                    type: string
                 scripts:
                   type: object
                   properties:
@@ -94,4 +90,4 @@ spec:
     singular: terraform
     kind: Terraform
     shortNames:
-      - tf  
+      - tf

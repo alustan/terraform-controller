@@ -22,8 +22,9 @@ import (
 
 const (
 	maxRetries   = 5
-	syncInterval = 10 * time.Minute // Set sync interval to 10 minutes
 )
+
+var syncInterval time.Duration
 
 type Controller struct {
 	clientset *k8sclient.Clientset
@@ -86,6 +87,9 @@ type SyncRequest struct {
 	Parent     ParentResource `json:"parent"`
 	Finalizing bool           `json:"finalizing"`
 }
+
+
+
 
 func NewController(clientset *k8sclient.Clientset, dynClient dynclient.Interface) *Controller {
 	return &Controller{
@@ -188,19 +192,28 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 		return
 	}
 
-	provider := observed.Parent.Spec.Backend["provider"]
-	if provider == "aws" {
-		err = terraform.SetupAWSBackend(observed.Parent.Spec.Backend)
-		if err != nil {
-			log.Printf("Error setting up AWS backend: %v", err)
+	backend := observed.Parent.Spec.Backend
+
+	if backend == nil || len(backend) == 0 {
+		// No backend provided, continue without backend setup
+		log.Println("No backend provided, continuing without backend setup")
+	} else {
+		provider, providerExists := backend["provider"]
+		if !providerExists || provider == "" {
+			log.Println("Backend provided without specifying provider, continuing without backend setup")
+		} else if provider == "aws" {
+			err = terraform.SetupAWSBackend(backend)
+			if err != nil {
+				log.Printf("Error setting up AWS backend: %v", err)
+				return
+			}
+		} else {
+			log.Printf("Unsupported backend provider: %v", provider)
 			return
 		}
-	} else {
-		log.Printf("Unsupported backend provider: %v", provider)
-		return
 	}
 
-	configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Namespace, repoDir)
+   configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Namespace, repoDir)
 	if err != nil {
 		log.Printf("Error creating Dockerfile ConfigMap: %v", err)
 		return
@@ -240,7 +253,8 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 	}
 }
 
-func (c *Controller) Reconcile() {
+
+func (c *Controller) Reconcile(syncInterval time.Duration) {
 	for {
 		c.reconcileLoop()
 		time.Sleep(syncInterval)

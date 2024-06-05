@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"controller/pkg/util"
 	"controller/pkg/controller" 
-	_ "controller/pkg/plugin/aws"
+	_ "controller/plugin/aws"
 )
 
 // Variables to be set by ldflags

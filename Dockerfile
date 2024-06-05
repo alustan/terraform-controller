@@ -3,8 +3,6 @@ FROM golang:1.22 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
-ENV SYNC_INTERVAL=$SYNC_INTERVAL
-
 WORKDIR /workspace
 
 # Copy the Go Modules manifests
@@ -32,7 +30,6 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o te
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-ENV SYNC_INTERVAL=$SYNC_INTERVAL
 COPY --from=builder /workspace/terraform-controller .
 USER 65532:65532
 EXPOSE 8080

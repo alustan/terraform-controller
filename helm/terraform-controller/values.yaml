@@ -1,6 +1,4 @@
-# Default values for terraform-controller.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+
 
 replicaCount: 1
 namespace: "metacontroller"
@@ -8,17 +6,17 @@ image:
   repository: alustan/terraform-controller
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "0.1.0"
+  tag: "v0.1.0"
 
 imagePullSecrets: []
 nameOverride: "terraform-controller"
 fullnameOverride: "terraform-controller"
 
-syncInterval: "10m"
+syncInterval: "1m"
 
 serviceAccount:
   # Specifies whether a service account should be created
-  create: true
+  create: false
   # Automatically mount a ServiceAccount's API credentials?
   automount: true
   # Annotations to add to the service account

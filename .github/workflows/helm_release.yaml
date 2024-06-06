@@ -30,15 +30,8 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Verify directory structure
-        run: |
-          echo "Listing root directory:"
-          ls -l /
-          echo "Listing current directory:"
-          ls -l .
-
       - name: Save and publish Helm chart to Docker registry
         run: |
-          helm package ./helm/terraform-controller-helm/
           VERSION="${GITHUB_REF_NAME#v}"
+          helm package --version $VERSION ./helm/terraform-controller-helm/
           helm push terraform-controller-helm-${VERSION}.tgz oci://registry-1.docker.io/alustan

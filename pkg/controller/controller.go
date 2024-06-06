@@ -134,152 +134,154 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 
 func (c *Controller) handleSyncRequest(observed SyncRequest) {
+    var envVars map[string]string
 
-	 var envVars map[string]string
-	
-	if observed.Parent.Spec.Variables != nil {
-		envVars = util.ExtractEnvVars(observed.Parent.Spec.Variables)
-	}
+    if observed.Parent.Spec.Variables != nil {
+        envVars = util.ExtractEnvVars(observed.Parent.Spec.Variables)
+    }
 
+    log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
 
-	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
+    var script map[string]interface{}
+    if observed.Parent.Spec.Scripts.Apply.Inline != "" {
+        log.Printf("Using inline script: %s", observed.Parent.Spec.Scripts.Apply.Inline)
+        script = map[string]interface{}{
+            "inline": observed.Parent.Spec.Scripts.Apply.Inline,
+        }
+    } else if observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name != "" && observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key != "" {
+        log.Printf("Using ConfigMapRef with name: %s and key: %s", observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name, observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key)
+        script = map[string]interface{}{
+            "configMapRef": map[string]interface{}{
+                "name": observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name,
+                "key":  observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key,
+            },
+        }
+    } else {
+        log.Println("No script provided for apply operation")
+        return
+    }
 
-	var script map[string]interface{}
-	if observed.Parent.Spec.Scripts.Apply.Inline != "" {
-		log.Printf("Using inline script: %s", observed.Parent.Spec.Scripts.Apply.Inline)
-		script = map[string]interface{}{
-			"inline": observed.Parent.Spec.Scripts.Apply.Inline,
-		}
-	} else if observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name != "" && observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key != "" {
-		log.Printf("Using ConfigMapRef with name: %s and key: %s", observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name, observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key)
-		script = map[string]interface{}{
-			"configMapRef": map[string]interface{}{
-				"name": observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name,
-				"key":  observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key,
-			},
-		}
-	} else {
-		log.Println("No script provided for apply operation")
-		return
-	}
+    scriptContent, err := terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
+    if err != nil {
+        log.Printf("Error extracting apply script: %v", err)
+        return
+    }
 
-	scriptContent, err := terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
-	if err != nil {
-		log.Printf("Error extracting apply script: %v", err)
-		return
-	}
+    if observed.Finalizing {
+        if observed.Parent.Spec.Scripts.Destroy.Inline != "" {
+            script = map[string]interface{}{
+                "inline": observed.Parent.Spec.Scripts.Destroy.Inline,
+            }
+        } else if observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Name != "" && observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Key != "" {
+            script = map[string]interface{}{
+                "configMapRef": map[string]interface{}{
+                    "name": observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Name,
+                    "key":  observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Key,
+                },
+            }
+        } else {
+            log.Println("No script provided for destroy operation")
+            return
+        }
 
-	if observed.Finalizing {
-		if observed.Parent.Spec.Scripts.Destroy.Inline != "" {
-			script = map[string]interface{}{
-				"inline": observed.Parent.Spec.Scripts.Destroy.Inline,
-			}
-		} else if observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Name != "" && observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Key != "" {
-			script = map[string]interface{}{
-				"configMapRef": map[string]interface{}{
-					"name": observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Name,
-					"key":  observed.Parent.Spec.Scripts.Destroy.ConfigMapRef.Key,
-				},
-			}
-		} else {
-			log.Println("No script provided for destroy operation")
-			return
-		}
+        scriptContent, err = terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
+        if err != nil {
+            log.Printf("Error extracting destroy script: %v", err)
+            return
+        }
+    }
 
-		scriptContent, err = terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
-		if err != nil {
-			log.Printf("Error extracting destroy script: %v", err)
-			return
-		}
-	}
+    repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
 
-	repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
-
-    
-	 var sshKey string
-	// Check if GitRepo is provided
+    var sshKey string
     gitRepo := observed.Parent.Spec.GitRepo
 
-	if gitRepo.URL != "" && gitRepo.SSHKeySecret.Name != "" && gitRepo.SSHKeySecret.Key != "" {
-      sshKey, err = util.GetDataFromSecret(c.clientset, observed.Parent.Metadata.Namespace, gitRepo.SSHKeySecret.Name, gitRepo.SSHKeySecret.Key)
+    if gitRepo.URL != "" && gitRepo.SSHKeySecret.Name != "" && gitRepo.SSHKeySecret.Key != "" {
+        sshKey, err = util.GetDataFromSecret(c.clientset, observed.Parent.Metadata.Namespace, gitRepo.SSHKeySecret.Name, gitRepo.SSHKeySecret.Key)
         if err != nil {
             log.Fatalf("Failed to get SSH key from secret: %v", err)
         }
-	}
+    }
 
-	err = terraform.CloneOrPullRepo(observed.Parent.Spec.GitRepo.URL, observed.Parent.Spec.GitRepo.Branch, repoDir, sshKey)
-	if err != nil {
-		log.Printf("Error cloning Git repository: %v", err)
-		return
-	}
+    err = terraform.CloneOrPullRepo(gitRepo.URL, gitRepo.Branch, repoDir, sshKey)
+    if err != nil {
+        log.Printf("Error cloning Git repository: %v", err)
+        return
+    }
 
-	backend := observed.Parent.Spec.Backend
+    backend := observed.Parent.Spec.Backend
 
-	var provider plugin.BackendProvider
+    var provider plugin.BackendProvider
+    providerType := ""
+    providerExists := false
 
-	if backend == nil || len(backend) == 0 {
-		// No backend provided, continue without backend setup
-		log.Println("No backend provided, continuing without backend setup")
-	} else {
-		providerType, providerExists := backend["provider"]
+    if backend != nil && len(backend) > 0 {
+        providerType, providerExists = backend["provider"]
 
-		if !providerExists || providerType == "" {
-			log.Println("Backend provided without specifying provider, continuing without backend setup")
-		} else {
-			// Get the appropriate provider
-			provider, err = plugin.GetProvider(providerType)
-			if err != nil {
-				log.Fatalf("Error getting provider: %v", err)
-			}
-		
-		   err = provider.SetupBackend(backend)
+        if providerExists && providerType != "" {
+            provider, err = plugin.GetProvider(providerType)
+            if err != nil {
+                log.Fatalf("Error getting provider: %v", err)
+            }
+
+            err = provider.SetupBackend(backend)
             if err != nil {
                 log.Printf("Error setting up %s backend: %v", providerType, err)
                 return
             }
+        } else {
+            log.Println("Backend provided without specifying provider, continuing without backend setup")
+        }
+    } else {
+        log.Println("No backend provided, continuing without backend setup")
+    }
 
-		} 
-	}
+    // Ensure provider is only used if providerExists
+    var dockerfileAdditions string
+    if providerExists {
+        dockerfileAdditions = provider.GetDockerfileAdditions()
+    } else {
+        dockerfileAdditions = ""
+    }
 
-	
-	configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Namespace, repoDir, provider.GetDockerfileAdditions())
-	if err != nil {
-		log.Printf("Error creating Dockerfile ConfigMap: %v", err)
-		return
-	}
+    configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Namespace, repoDir, dockerfileAdditions, providerExists)
+    if err != nil {
+        log.Printf("Error creating Dockerfile ConfigMap: %v", err)
+        return
+    }
 
-   imageName := observed.Parent.Spec.ContainerRegistry.ImageName
-	err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
-	if err != nil {
-		log.Printf("Error creating build job: %v", err)
-		return
-	}
+    imageName := observed.Parent.Spec.ContainerRegistry.ImageName
+    err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+    if err != nil {
+        log.Printf("Error creating build job: %v", err)
+        return
+    }
 
-	pvcName := "terraform-pvc"
-	var terraformErr error
-	for i := 0; i < maxRetries; i++ {
-		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Namespace, envVars, scriptContent, imageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
-		if terraformErr == nil {
-			break
-		}
-		log.Printf("Retrying Terraform command due to error: %v", terraformErr)
-		time.Sleep(2 * time.Second)
-	}
+    pvcName := "terraform-pvc"
+    var terraformErr error
+    for i := 0; i < maxRetries; i++ {
+        terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Namespace, envVars, scriptContent, imageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+        if terraformErr == nil {
+            break
+        }
+        log.Printf("Retrying Terraform command due to error: %v", terraformErr)
+        time.Sleep(2 * time.Second)
+    }
 
-	status := map[string]interface{}{
-		"state":   "Success",
-		"message": "Terraform applied successfully",
-	}
-	if terraformErr != nil {
-		status["state"] = "Failed"
-		status["message"] = terraformErr.Error()
-	}
+    status := map[string]interface{}{
+        "state":   "Success",
+        "message": "Terraform applied successfully",
+    }
+    if terraformErr != nil {
+        status["state"] = "Failed"
+        status["message"] = terraformErr.Error()
+    }
 
-	err = kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
-	if err != nil {
-		log.Printf("Error updating status: %v", err)
-		return
-	}
+    err = kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
+    if err != nil {
+        log.Printf("Error updating status: %v", err)
+        return
+    }
 }
 
 

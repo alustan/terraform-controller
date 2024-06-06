@@ -120,10 +120,7 @@ func NewInClusterController() *Controller {
 }
 
 func (c *Controller) ServeHTTP(r *gin.Context) {
-	if r.Request.Method == http.MethodGet && r.Request.URL.Path == "/" {
-		r.String(http.StatusOK, "OK")
-		return
-	}
+    
 	var observed SyncRequest
 	err := json.NewDecoder(r.Request.Body).Decode(&observed)
 	if err != nil {
@@ -139,12 +136,16 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 func (c *Controller) handleSyncRequest(observed SyncRequest) {
 	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables, observed.Parent.Spec.Backend)
 
+	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
+
 	var script map[string]interface{}
 	if observed.Parent.Spec.Scripts.Apply.Inline != "" {
+		log.Printf("Using inline script: %s", observed.Parent.Spec.Scripts.Apply.Inline)
 		script = map[string]interface{}{
 			"inline": observed.Parent.Spec.Scripts.Apply.Inline,
 		}
 	} else if observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name != "" && observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key != "" {
+		log.Printf("Using ConfigMapRef with name: %s and key: %s", observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name, observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Key)
 		script = map[string]interface{}{
 			"configMapRef": map[string]interface{}{
 				"name": observed.Parent.Spec.Scripts.Apply.ConfigMapRef.Name,

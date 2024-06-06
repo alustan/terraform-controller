@@ -33,9 +33,9 @@ jobs:
 
       - name: save helm chart to local registry
         run: |
-          helm package ${{ github.workspace }}/helm/terraform-controller/
+          helm package ${{ github.workspace }}/helm/terraform-controller-helm/
      
       - name: publish chart to Docker Hub
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          helm push terraform-controller-${VERSION}.tgz oci://registry-1.docker.io/alustan
+          helm push terraform-controller-helm-${VERSION}.tgz oci://registry-1.docker.io/alustan

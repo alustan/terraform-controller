@@ -134,7 +134,13 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 
 func (c *Controller) handleSyncRequest(observed SyncRequest) {
-	envVars := util.ExtractEnvVars(observed.Parent.Spec.Variables, observed.Parent.Spec.Backend)
+
+	 var envVars map[string]string
+	
+	if observed.Parent.Spec.Variables != nil {
+		envVars = util.ExtractEnvVars(observed.Parent.Spec.Variables)
+	}
+
 
 	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
 

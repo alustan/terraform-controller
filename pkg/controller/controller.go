@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 	"time"
-
+	"path/filepath"
 	"github.com/gin-gonic/gin"
 	"controller/pkg/container"
 	"controller/pkg/kubernetes"
@@ -189,11 +189,13 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 
 	repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
 
-      var sshKey string
-    // Check if GitRepo is provided
+    
+	 var sshKey string
+	// Check if GitRepo is provided
     gitRepo := observed.Parent.Spec.GitRepo
-    if gitRepo != nil && gitRepo.URL != "" && gitRepo.SSHKeySecret != nil && gitRepo.SSHKeySecret.Name != "" && gitRepo.SSHKeySecret.Key != "" {
-        sshKey, err = util.GetDataFromSecret(c.clientset, observed.Parent.Metadata.Namespace, gitRepo.SSHKeySecret.Name, gitRepo.SSHKeySecret.Key)
+
+	if gitRepo.URL != "" && gitRepo.SSHKeySecret.Name != "" && gitRepo.SSHKeySecret.Key != "" {
+      sshKey, err = util.GetDataFromSecret(c.clientset, observed.Parent.Metadata.Namespace, gitRepo.SSHKeySecret.Name, gitRepo.SSHKeySecret.Key)
         if err != nil {
             log.Fatalf("Failed to get SSH key from secret: %v", err)
         }

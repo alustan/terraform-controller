@@ -1,9 +1,9 @@
----
 name: Release helm chart
 on:
   push:
     tags:
       - 'v*.*.*'  # Trigger the workflow on version tags
+
 jobs:
   release-helm:
     name: Release helm chart
@@ -12,7 +12,6 @@ jobs:
     env:
       HELM_EXPERIMENTAL_OCI: 1
     runs-on: ubuntu-22.04
-   
 
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: install helm
+      - name: Install Helm
         uses: Azure/setup-helm@v4
         with:
           version: 3.8.0
@@ -31,11 +30,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: save helm chart to local registry
+      - name: Save Helm chart to local registry
         run: |
           helm package helm/terraform-controller-helm/
-     
-      - name: publish chart to Docker Hub
+          ls -l  # List files to verify the correct path and name
+
+      - name: Publish chart to Docker Hub
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          helm push terraform-controller-helm-${VERSION}.tgz oci://registry-1.docker.io/alustan
+          echo "Pushing version ${VERSION}"
+          CHART_FILE="terraform-controller-helm-${VERSION}.tgz"
+          if [ ! -f "$CHART_FILE" ]; then
+            echo "Chart file $CHART_FILE does not exist. Listing available files:"
+            ls -l
+            exit 1
+          fi
+          helm push $CHART_FILE oci://registry-1.docker.io/alustan

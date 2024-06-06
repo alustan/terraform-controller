@@ -9,8 +9,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreateDockerfileConfigMap(clientset *kubernetes.Clientset, namespace, terraformDir, additionalTools string) (string, error) {
-	content := fmt.Sprintf(`
+func CreateDockerfileConfigMap(clientset *kubernetes.Clientset, namespace, terraformDir, additionalTools string, providerExists bool) (string, error) {
+    // Initialize Dockerfile content with the terraformDir
+    content := fmt.Sprintf(`
 FROM ubuntu:latest
 
 RUN apt-get update && \\
@@ -30,31 +31,40 @@ RUN wget https://releases.hashicorp.com/terraform/1.8.1/terraform_1.8.1_linux_am
 RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \\
     install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl && \\
     rm kubectl
+`)
 
-%s
+    // Include additionalTools if the provider exists
+    if providerExists {
+        content += additionalTools
+    }
 
+    // Append terraformDir to the Dockerfile content
+    content += fmt.Sprintf(`
 WORKDIR /app
 
 COPY %s/. ./
 
 CMD ["/bin/bash"]
-`, additionalTools, terraformDir)
+`, terraformDir)
 
-	configMap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "dockerfile-configmap",
-		},
-		Data: map[string]string{
-			"Dockerfile": content,
-		},
-	}
+    // Create ConfigMap with the Dockerfile content
+    configMap := &corev1.ConfigMap{
+        ObjectMeta: metav1.ObjectMeta{
+            Name: "dockerfile-configmap",
+        },
+        Data: map[string]string{
+            "Dockerfile": content,
+        },
+    }
 
-	_, err := clientset.CoreV1().ConfigMaps(namespace).Create(context.Background(), configMap, metav1.CreateOptions{})
-	if err != nil {
-		log.Printf("Failed to create ConfigMap: %v", err)
-		return "", err
-	}
+    // Create the ConfigMap
+    _, err := clientset.CoreV1().ConfigMaps(namespace).Create(context.Background(), configMap, metav1.CreateOptions{})
+    if err != nil {
+        log.Printf("Failed to create ConfigMap: %v", err)
+        return "", err
+    }
 
-	return configMap.Name, nil
+    return configMap.Name, nil
 }
+
 

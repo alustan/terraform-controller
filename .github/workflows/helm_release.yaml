@@ -1,48 +1,48 @@
-name: Release helm chart
-on:
-  push:
-    tags:
-      - 'v*.*.*'  # Trigger the workflow on version tags
+# name: Release helm chart
+# on:
+#   push:
+#     tags:
+#       - 'v*.*.*'  # Trigger the workflow on version tags
 
-jobs:
-  release-helm:
-    name: Release helm chart
-    permissions:
-      contents: write
-    env:
-      HELM_EXPERIMENTAL_OCI: 1
-    runs-on: ubuntu-22.04
+# jobs:
+#   release-helm:
+#     name: Release helm chart
+#     permissions:
+#       contents: write
+#     env:
+#       HELM_EXPERIMENTAL_OCI: 1
+#     runs-on: ubuntu-22.04
 
-    steps:
-      - uses: actions/checkout@v4
-        name: Checkout
-        with:
-          fetch-depth: 0
+#     steps:
+#       - uses: actions/checkout@v4
+#         name: Checkout
+#         with:
+#           fetch-depth: 0
 
-      - name: Install Helm
-        uses: Azure/setup-helm@v4
-        with:
-          version: 3.8.0
+#       - name: Install Helm
+#         uses: Azure/setup-helm@v4
+#         with:
+#           version: 3.8.0
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+#       - name: Login to Docker Hub
+#         uses: docker/login-action@v3
+#         with:
+#           username: ${{ secrets.DOCKERHUB_USERNAME }}
+#           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Save Helm chart to local registry
-        run: |
-          helm package helm/terraform-controller-helm/
-          ls -l  # List files to verify the correct path and name
+#       - name: Save Helm chart to local registry
+#         run: |
+#           helm package helm/terraform-controller-helm/
+#           ls -l  # List files to verify the correct path and name
 
-      - name: Publish chart to Docker Hub
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Pushing version ${VERSION}"
-          CHART_FILE="terraform-controller-helm-${VERSION}.tgz"
-          if [ ! -f "$CHART_FILE" ]; then
-            echo "Chart file $CHART_FILE does not exist. Listing available files:"
-            ls -l
-            exit 1
-          fi
-          helm push $CHART_FILE oci://registry-1.docker.io/alustan
+#       - name: Publish chart to Docker Hub
+#         run: |
+#           VERSION="${GITHUB_REF_NAME#v}"
+#           echo "Pushing version ${VERSION}"
+#           CHART_FILE="terraform-controller-helm-${VERSION}.tgz"
+#           if [ ! -f "$CHART_FILE" ]; then
+#             echo "Chart file $CHART_FILE does not exist. Listing available files:"
+#             ls -l
+#             exit 1
+#           fi
+#           helm push $CHART_FILE oci://registry-1.docker.io/alustan

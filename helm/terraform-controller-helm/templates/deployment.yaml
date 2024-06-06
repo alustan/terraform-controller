@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "terraform-controller.fullname" . }}
+  name: {{ include "terraform-controller-helm.fullname" . }}
   namespace: {{ .Values.namespace }}
   labels:
-    {{- include "terraform-controller.labels" . | nindent 4 }}
+    {{- include "terraform-controller-helm.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "terraform-controller.selectorLabels" . | nindent 6 }}
+      {{- include "terraform-controller-helm.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -19,7 +19,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "terraform-controller.labels" . | nindent 8 }}
+        {{- include "terraform-controller-helm.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -29,7 +29,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- if .Values.serviceAccount.create -}}
-      serviceAccountName: {{ include "terraform-controller.serviceAccountName" . }}
+      serviceAccountName: {{ include "terraform-controller-helm.serviceAccountName" . }}
       {{- end }}
       
       containers:

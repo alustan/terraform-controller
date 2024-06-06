@@ -57,14 +57,31 @@ CMD ["/bin/bash"]
         },
     }
 
-    // Create the ConfigMap
-    _, err := clientset.CoreV1().ConfigMaps(namespace).Create(context.Background(), configMap, metav1.CreateOptions{})
+   
+    existingConfigMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), "dockerfile-configmap", metav1.GetOptions{})
     if err != nil {
-        log.Printf("Failed to create ConfigMap: %v", err)
-        return "", err
+        if !errors.IsNotFound(err) {
+            log.Printf("Failed to get ConfigMap: %v", err)
+            return "", err
+        }
+
+        // ConfigMap does not exist, create it
+        _, err := clientset.CoreV1().ConfigMaps(namespace).Create(context.Background(), configMap, metav1.CreateOptions{})
+        if err != nil {
+            log.Printf("Failed to create ConfigMap: %v", err)
+            return "", err
+        }
+    } else {
+        // ConfigMap exists, update it
+        existingConfigMap.Data = configMap.Data
+        _, err := clientset.CoreV1().ConfigMaps(namespace).Update(context.Background(), existingConfigMap, metav1.UpdateOptions{})
+        if err != nil {
+            log.Printf("Failed to update ConfigMap: %v", err)
+            return "", err
+        }
     }
 
-    return configMap.Name, nil
+    return configMap.Name, nilil
 }
 
 

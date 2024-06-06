@@ -11,4 +11,3 @@ roleRef:
   name: terraform-manager
   apiGroup: rbac.authorization.k8s.io
 
-

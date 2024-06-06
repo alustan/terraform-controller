@@ -6,6 +6,13 @@ rules:
 - apiGroups: ["alustan.io"]
   resources: ["terraforms"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["configmaps", "pods", "persistentvolumeclaims"]
+  verbs: ["create", "get", "list", "watch", "update", "delete"]
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "get", "list", "watch", "update", "delete"]
+
 
 
 

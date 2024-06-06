@@ -49,7 +49,7 @@ release:
 
     ## Helm chart
   
-    - `ghcr.io/alustan/{{ .ProjectName }}-helm:{{ .Version }}`
+    # - `ghcr.io/alustan/{{ .ProjectName }}-helm:{{ .Version }}`
 
 changelog:
   sort: asc

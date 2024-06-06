@@ -1,10 +1,8 @@
-# Give it a Little Time
-
 ## Introduction
 
 This document provides a detailed design for a Kubernetes controller integrated with Terraform. 
 
-The controller manages infrastructure as code (IaC) by applying Terraform configurations stored in Git repositories. This integration automates the reconciliation of infrastructure states defined by custom resources in Kubernetes.
+The controller manages infrastructure as code (IaC) by applying Terraform configurations stored in Git repositories. This integration automates drift detection and  reconciliation of infrastructure states defined by custom resources in Kubernetes.
 
 ## Objectives
 
@@ -12,7 +10,7 @@ The controller manages infrastructure as code (IaC) by applying Terraform config
 
 > - Scalability: Handle multiple infrastructure configurations efficiently.
 
-> - Extensibility: Allow easy addition of new features and backends.
+> - Extensibility: Allow easy addition of new features and backends using plugins.
 
 > - Reliability: Ensure robust error handling and retry mechanisms.
 
@@ -22,15 +20,22 @@ The controller manages infrastructure as code (IaC) by applying Terraform config
 
 The project architecture consists of the following main components:
 
-- Controller: The central component responsible for managing custom resources and executing Terraform commands.
+- Controller: The central component responsible for managing custom resources with constant drift detection and reconciliation.
 
-- API Server: Exposes endpoints to handle incoming sync requests from metacontroller
+- Container: in-cluster container build using kaniko with state persistence
+
+- Git Integration: Clones or pulls latest changes from Git repositories.
+
+- plugin: plugs in new backend for any given cloud provider
 
 - Terraform Integration: Executes Terraform scripts based on the provided configurations.
 
-- Git Integration: Clones and manages Terraform configurations from Git repositories.
-
 - Kubernetes Integration: Interacts with the Kubernetes API to manage resources and update statuses.
+
+- API Server: Exposes endpoints to handle incoming sync requests from metacontroller
+
+- Helm package: package container into a helm chart and deploy to an OCI registry
+
 
 ## Components
 
@@ -56,11 +61,11 @@ The project architecture consists of the following main components:
 
 - Scripts: Handles execution of Terraform  `apply`, and `destroy` scripts.
 
-- Backend Setup: Configures backends like AWS S3 and Vault for storing Terraform states.
+- Backend Setup: Configures backends for  storing Terraform states.
 
 #### Git Integration
 
-- CloneGitRepo Method: Clones the specified Git repository containing Terraform configurations.
+- CloneGitRepo Method: Clones or pulls latest changes from  specified Git repository containing Terraform configurations.
 
 #### Kubernetes Integration
 
@@ -68,9 +73,28 @@ The project architecture consists of the following main components:
 
 - UpdateStatus Method: Updates the status of custom resources based on the outcome of Terraform commands.
 
-#### in-cluster container build
+#### Container 
 
-- Using kaniko
+- In-cluster container build using kaniko with state persistence
+
+#### Plugin
+- extensible backend plugin for different cloud providers
+
+#### Logging and Monitoring
+
+- Standard Logging: Uses the log package to write logs to standard error, ensuring compatibility with Kubernetes logging mechanisms.
+
+- Log Levels: Info, error, and debug logs to provide detailed insights into the controller's operations.
+
+#### Testing and Coverage
+
+- Unit Tests: Located in the test directory, covering individual components and methods.
+
+#### Security Considerations
+
+- Authentication and Authorization: Ensures that the controller has the necessary permissions to interact with Kubernetes resources.
+
+- Secret Management: Securely handles sensitive information like Git SSH keys and backend credentials.
 
 #### Workflow
 
@@ -86,14 +110,17 @@ The project architecture consists of the following main components:
 
 ##### - Terraform Execution:
 
+> Clones/pulls the Terraform configuration from the specified Git repository.
+
+> Sets up the backend (e.g., AWS S3, dyanmoDB) for Terraform state management.
+
 > The controller determines the appropriate Terraform script to run (apply or destroy).
-> Clones the Terraform configuration from the specified Git repository.
-> Sets up the backend (e.g., AWS S3, Vault) for Terraform state management.
+
 > Executes the Terraform script with environment variables.
 
 ##### - Status Update:
 
-> After executing Terraform, the controller updates the status of the custom resource with the outcome.
+> Following execution, the controller updates the status of the custom resource with the outcome.
 > If errors occur, the controller retries the operation with a maximum retry limit.
 
 ##### - Reconciliation Loop:
@@ -102,47 +129,11 @@ The project architecture consists of the following main components:
 
 #### Environment Setup
 
- - Setup Script:
-A Bash script `setup.sh` and `makefile` is provided to initialize the environment.
+- fork and clone the repo
+
+- `make setup ` to initialize the environment.
 
 
-- Dockerfile:
-Defines the container image for the controller.
-
-- Kustomize:
-packaging of the controller.
-
-#### Logging and Monitoring
-
-- Standard Logging: Uses the log package to write logs to standard error, ensuring compatibility with Kubernetes logging mechanisms.
-
-- Log Levels: Info, error, and debug logs to provide detailed insights into the controller's operations.
-
-- Monitoring: Integrate with tools like Prometheus and Grafana for metrics and dashboarding.
-
-#### Testing and Coverage
-
-- Unit Tests: Located in the test directory, covering individual components and methods.
-
-- Integration Tests: Validate the end-to-end workflow from sync request handling to status updates.
-
-
-#### Security Considerations
-
-- Authentication and Authorization: Ensure that the controller has the necessary permissions to interact with Kubernetes resources.
-
-- Secret Management: Securely handle sensitive information like Git SSH keys and backend credentials.
-
-
-#### Future Enhancements
-
-- Support for Additional Backends: Add support for more Terraform backends.
-
-- Enhanced Error Handling: Improve error handling and retry mechanisms.
-
-- Custom Metrics: Expose custom metrics for better observability.
-
-- Webhooks: Implement webhooks for real-time notifications and updates.
 
 ```yaml
 apiVersion: alustan.io/v1alpha1
@@ -239,4 +230,18 @@ spec:
 #   message: "Awaiting processing"
 ```
 
-**This design document outlines the architecture, components, and workflows for the Kubernetes controller integrated with Terraform. It serves as a reference for development, deployment, and future enhancements.**
+
+
+#### Future Enhancements
+
+- Support for Additional Backends: using the extensible plugin capability.
+
+- Enhanced Error Handling: Improve error handling and retry mechanisms.
+
+- Custom Metrics: Expose custom metrics for better observability.
+
+- Webhooks: Implement webhooks for real-time notifications and updates.
+
+
+
+**This design document outlines the architecture, components, and workflow for the Kubernetes controller integrated with Terraform. It serves as a reference for development, deployment, and future enhancements.**

@@ -24,21 +24,16 @@ jobs:
         with:
           version: 3.8.0
 
-      - name: login to ghcr.io using helm
-        run: |
-          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io/alustan/terraform-controller-helm --username ${{ github.repository_owner }} --password-stdin
-     
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: save helm chart to local registry
+      - name: save and publish helm chart to docker registry
         run: |
-          helm package ${{ github.workspace }}/helm/terraform-controller-helm/
-
-      - name: publish chart to Docker Hub
-        run: |
+          helm package /helm/terraform-controller-helm/
           VERSION="${GITHUB_REF_NAME#v}"
           helm push terraform-controller-helm-${VERSION}.tgz oci://registry-1.docker.io/alustan
+
+    

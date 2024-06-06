@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+   
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -60,7 +62,7 @@ CMD ["/bin/bash"]
    
     existingConfigMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), "dockerfile-configmap", metav1.GetOptions{})
     if err != nil {
-        if !errors.IsNotFound(err) {
+        if !apierrors.IsNotFound(err) {
             log.Printf("Failed to get ConfigMap: %v", err)
             return "", err
         }
@@ -81,7 +83,7 @@ CMD ["/bin/bash"]
         }
     }
 
-    return configMap.Name, nilil
+    return configMap.Name, nil
 }
 
 

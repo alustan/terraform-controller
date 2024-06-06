@@ -33,7 +33,7 @@ jobs:
 
       - name: save helm chart to local registry
         run: |
-          helm package ${{ github.workspace }}/helm/terraform-controller-helm/
+          helm package helm/terraform-controller-helm/
      
       - name: publish chart to Docker Hub
         run: |

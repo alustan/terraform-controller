@@ -9,8 +9,8 @@ image:
   tag: "v0.5.0"
 
 imagePullSecrets: []
-nameOverride: "terraform-controller"
-fullnameOverride: "terraform-controller"
+nameOverride: "terraform-controller-helm"
+fullnameOverride: "terraform-controller-helm"
 
 syncInterval: "1m"
 

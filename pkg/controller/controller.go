@@ -187,11 +187,16 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
 		}
 	}
 
-	repoDir := "/tmp/" + observed.Parent.Metadata.Name
+	repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
 
-	sshKey, err := util.GetDataFromSecret(c.clientset, observed.Parent.Metadata.Namespace, observed.Parent.Spec.GitRepo.SSHKeySecret.Name, observed.Parent.Spec.GitRepo.SSHKeySecret.Key)
-	if err != nil {
-		log.Fatalf("Failed to get SSH key from secret: %v", err)
+      var sshKey string
+    // Check if GitRepo is provided
+    gitRepo := observed.Parent.Spec.GitRepo
+    if gitRepo != nil && gitRepo.URL != "" && gitRepo.SSHKeySecret != nil && gitRepo.SSHKeySecret.Name != "" && gitRepo.SSHKeySecret.Key != "" {
+        sshKey, err = util.GetDataFromSecret(c.clientset, observed.Parent.Metadata.Namespace, gitRepo.SSHKeySecret.Name, gitRepo.SSHKeySecret.Key)
+        if err != nil {
+            log.Fatalf("Failed to get SSH key from secret: %v", err)
+        }
 	}
 
 	err = terraform.CloneOrPullRepo(observed.Parent.Spec.GitRepo.URL, observed.Parent.Spec.GitRepo.Branch, repoDir, sshKey)

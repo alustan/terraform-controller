@@ -92,6 +92,7 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 								"--dockerfile=/config/Dockerfile",
 								"--destination=" + imageName,
 								"--context=/workspace/",
+								
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
@@ -118,6 +119,12 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 								ConfigMap: &corev1.ConfigMapVolumeSource{
 									LocalObjectReference: corev1.LocalObjectReference{
 										Name: configMapName,
+									},
+									Items: []corev1.KeyToPath{
+										{
+											Key:  "Dockerfile",
+											Path: "Dockerfile",
+										},
 									},
 								},
 							},
@@ -152,4 +159,3 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 	log.Printf("Created Job: %s", jobName)
 	return nil
 }
-

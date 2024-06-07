@@ -152,8 +152,8 @@ metadata:
   namespace: default
 spec:
   variables:
-    var1: value1
-    var2: value2
+    TF_VAR_var1: value1
+    TF_VAR_var2: value2
   backend:
     provider: aws
     s3: s3-store
@@ -206,8 +206,8 @@ metadata:
   namespace: default
 spec:
   variables:
-    var1: value1
-    var2: value2
+    TF_VAR_var1: value1
+    TF_VAR_var2: value2
   backend:
     provider: aws
     s3: s3-store

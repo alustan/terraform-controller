@@ -180,3 +180,7 @@ C14dnVYSFRTV3J6TXlOVzVMa1ZrayIsZvcm1AZ21haWwuY29tImF1dGgiOiJBV0RkY2tyX3BhdF9tb2V
 type: kubernetes.io/dockerconfigjson
 
 
+kubectl logs docker-run-pod -n <namespace>
+
+
+

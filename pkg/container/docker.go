@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-func CreateDockerfileConfigMap(clientset *kubernetes.Clientset, namespace, terraformDir, additionalTools string, providerExists bool) (string, error) {
+func CreateDockerfileConfigMap(clientset *kubernetes.Clientset, name, namespace, terraformDir, additionalTools string, providerExists bool) (string, error) {
     // Initialize Dockerfile content with the terraformDir
     content := fmt.Sprintf(`
 FROM ubuntu:latest
@@ -49,10 +49,11 @@ COPY %s/. ./
 CMD ["/bin/bash"]
 `, terraformDir)
 
+configMapName := fmt.Sprintf("%s-dockerfile-configmap", name)
     // Create ConfigMap with the Dockerfile content
     configMap := &corev1.ConfigMap{
         ObjectMeta: metav1.ObjectMeta{
-            Name: "dockerfile-configmap",
+            Name: configMapName,
         },
         Data: map[string]string{
             "Dockerfile": content,
@@ -60,7 +61,7 @@ CMD ["/bin/bash"]
     }
 
    
-    existingConfigMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), "dockerfile-configmap", metav1.GetOptions{})
+    existingConfigMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
     if err != nil {
         if !apierrors.IsNotFound(err) {
             log.Printf("Failed to get ConfigMap: %v", err)

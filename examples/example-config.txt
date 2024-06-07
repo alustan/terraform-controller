@@ -134,3 +134,49 @@ spec:
     secretRef:
       name: my-dockerhub-secret
       key: dockerhub-cred
+
+
+kaniko
+
+{
+  "auths": {
+    "https://index.docker.io/v1/": {
+      "username": "alustan",
+      "password": "dckr_pat_***************",
+      "email": "alustanplatform@gmail.com",
+      "auth": "base64(username:password)"
+    }
+  }
+}
+alternatively
+
+docker login -u alustan --password-stdin dckr_pat_***************
+cat ~/.docker/config.json
+
+base64 -w 0 <path-to-dockerconfigjson>
+
+echo -n '{"auths":{"https://index.docker.io/v1/":{"username":"alustan","password":"dckr_pat_***************","email":"alustanplatform@gmail.com","auth":"YWx1c3RhbjpkY2tyX3BhdF9tb2VzQ0gteHZ2VVhIVFNXcnpNeU5XNUxrVms="}}}' | base64 -w 0
+
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alustankanikosecret
+  namespace: default # Change this to your desired namespace
+data:
+  .dockerconfigjson: <base64-encoded-docker-config-json>
+type: kubernetes.io/dockerconfigjson
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alustankanikosecret
+  namespace: default
+data:
+  .dockerconfigjson: eyJhdXRocyI6eyJodHRwczovL2luZGV4LmRvY2tlci5pby92MS8iOnsia
+m9ic2RvY2tlci51c2VybmFtZSI6ImFsdXN0YW4iLCJwYXNzd29yZCI6ImRja3JfcGF0X21vZXNDS
+C14dnVYSFRTV3J6TXlOVzVMa1ZrayIsZvcm1AZ21haWwuY29tImF1dGgiOiJBV0RkY2tyX3BhdF9tb2VzQ0gs9In19fQ==
+
+type: kubernetes.io/dockerconfigjson
+
+

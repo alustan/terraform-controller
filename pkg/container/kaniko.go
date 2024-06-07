@@ -92,7 +92,6 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 								"--dockerfile=/config/Dockerfile",
 								"--destination=" + imageName,
 								"--context=/workspace/",
-								"--docker-credential-directory=/kaniko/.docker",
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
@@ -153,3 +152,4 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 	log.Printf("Created Job: %s", jobName)
 	return nil
 }
+

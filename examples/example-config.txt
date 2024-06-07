@@ -155,7 +155,9 @@ cat ~/.docker/config.json
 
 base64 -w 0 <path-to-dockerconfigjson>
 
-echo -n '{"auths":{"https://index.docker.io/v1/":{"username":"alustan","password":"dckr_pat_***************","email":"alustanplatform@gmail.com","auth":"YWx1c3RhbjpkY2tyX3BhdF9tb2VzQ0gteHZ2VVhIVFNXcnpNeU5XNUxrVms="}}}' | base64 -w 0
+cat docker-config.json | base64 -w 0
+
+
 
 
 apiVersion: v1
@@ -181,6 +183,17 @@ type: kubernetes.io/dockerconfigjson
 
 
 kubectl logs docker-run-pod -n <namespace>
+
+kubectl create secret docker-registry my-docker-secret \
+  --docker-username=YOUR_DOCKER_USERNAME \
+  --docker-password=YOUR_DOCKER_PASSWORD \
+  --docker-email=YOUR_DOCKER_EMAIL \
+  --docker-server=https://index.docker.io/v1/
+
+
+
+
+
 
 
 

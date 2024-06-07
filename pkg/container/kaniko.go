@@ -138,8 +138,19 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
                             VolumeSource: corev1.VolumeSource{
                                 Secret: &corev1.SecretVolumeSource{
                                     SecretName: dockerSecretName,
+                                    Items: []corev1.KeyToPath{
+                                        {
+                                            Key:  ".dockerconfigjson",
+                                            Path: "config.json",
+                                        },
+                                    },
                                 },
                             },
+                        },
+                    },
+                    ImagePullSecrets: []corev1.LocalObjectReference{
+                        {
+                            Name: dockerSecretName,
                         },
                     },
                 },

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+    "fmt"
 	"path/filepath"
 	"github.com/gin-gonic/gin"
 	"controller/pkg/container"
@@ -119,8 +120,8 @@ func NewInClusterController() *Controller {
 	return NewController(clientset, dynClient)
 }
 
+
 func (c *Controller) ServeHTTP(r *gin.Context) {
-    
 	var observed SyncRequest
 	err := json.NewDecoder(r.Request.Body).Decode(&observed)
 	if err != nil {
@@ -129,11 +130,15 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	}
 	defer r.Request.Body.Close()
 
-	c.handleSyncRequest(observed)
+	response := c.handleSyncRequest(observed)
+
+    r.Writer.Header().Set("Content-Type", "application/json")
+	r.JSON(http.StatusOK, gin.H{"body": response})
+	
 }
 
 
-func (c *Controller) handleSyncRequest(observed SyncRequest) {
+func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interface{} {
     var envVars map[string]string
 
     if observed.Parent.Spec.Variables != nil {
@@ -158,13 +163,19 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
         }
     } else {
         log.Println("No script provided for apply operation")
-        return
+        return map[string]interface{}{
+            "status": "error",
+            "message": "No script provided for apply operation",
+        }
     }
 
     scriptContent, err := terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
     if err != nil {
         log.Printf("Error extracting apply script: %v", err)
-        return
+        return map[string]interface{}{
+            "status": "error",
+            "message": fmt.Sprintf("Error extracting apply script: %v", err),
+        }
     }
 
     if observed.Finalizing {
@@ -181,13 +192,19 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
             }
         } else {
             log.Println("No script provided for destroy operation")
-            return
+            return map[string]interface{}{
+                "status": "error",
+                "message": "No script provided for destroy operation",
+            }
         }
 
         scriptContent, err = terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
         if err != nil {
             log.Printf("Error extracting destroy script: %v", err)
-            return
+            return map[string]interface{}{
+                "status": "error",
+                "message": fmt.Sprintf("Error extracting destroy script: %v", err),
+            }
         }
     }
 
@@ -206,7 +223,10 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
     err = terraform.CloneOrPullRepo(gitRepo.URL, gitRepo.Branch, repoDir, sshKey)
     if err != nil {
         log.Printf("Error cloning Git repository: %v", err)
-        return
+        return map[string]interface{}{
+            "status": "error",
+            "message": fmt.Sprintf("Error cloning Git repository: %v", err),
+        }
     }
 
     backend := observed.Parent.Spec.Backend
@@ -227,7 +247,10 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
             err = provider.SetupBackend(backend)
             if err != nil {
                 log.Printf("Error setting up %s backend: %v", providerType, err)
-                return
+                return map[string]interface{}{
+                    "status": "error",
+                    "message": fmt.Sprintf("Error setting up %s backend: %v", providerType, err),
+                }
             }
         } else {
             log.Println("Backend provided without specifying provider, continuing without backend setup")
@@ -244,23 +267,29 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
         dockerfileAdditions = ""
     }
 
-    configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Namespace, repoDir, dockerfileAdditions, providerExists)
+    configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, repoDir, dockerfileAdditions, providerExists)
     if err != nil {
         log.Printf("Error creating Dockerfile ConfigMap: %v", err)
-        return
+        return map[string]interface{}{
+            "status": "error",
+            "message": fmt.Sprintf("Error creating Dockerfile ConfigMap: %v", err),
+        }
     }
 
     imageName := observed.Parent.Spec.ContainerRegistry.ImageName
-    err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+    err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
     if err != nil {
         log.Printf("Error creating build job: %v", err)
-        return
+        return map[string]interface{}{
+            "status": "error",
+            "message": fmt.Sprintf("Error creating build job: %v", err),
+        }
     }
 
-    pvcName := "terraform-pvc"
+    pvcName :=  fmt.Sprintf("%s-terraform-pvc", observed.Parent.Metadata.Name)
     var terraformErr error
     for i := 0; i < maxRetries; i++ {
-        terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Namespace, envVars, scriptContent, imageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+        terraformErr = container.CreateRunPod(c.clientset,observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, imageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
         if terraformErr == nil {
             break
         }
@@ -278,11 +307,21 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) {
     }
 
     err = kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
+     
     if err != nil {
         log.Printf("Error updating status: %v", err)
-        return
+        return map[string]interface{}{
+            "status": "error",
+            "message": fmt.Sprintf("Error updating status: %v", err),
+        }
+    }
+
+    return map[string]interface{}{
+        "status": "success",
+        "message": "Sync completed successfully",
     }
 }
+
 
 
 func (c *Controller) Reconcile(syncInterval time.Duration) {

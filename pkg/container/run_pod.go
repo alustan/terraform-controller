@@ -3,6 +3,7 @@ package container
 import (
     "context"
     "log"
+    "fmt"
 
     v1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -95,14 +96,14 @@ func DeletePodIfExists(clientset *kubernetes.Clientset, namespace, podName strin
 
 
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateRunPod(clientset *kubernetes.Clientset, namespace string, envVars map[string]string, script, imageName, pvcName, imagePullSecretName string) error {
+func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVars map[string]string, script, imageName, pvcName, imagePullSecretName string) error {
     err := EnsurePVC(clientset, namespace, pvcName)
     if err != nil {
         log.Printf("Failed to ensure PVC: %v", err)
         return err
     }
 
-    podName := "docker-run-pod"
+    podName := fmt.Sprintf("%s-docker-run-pod", name)
 
     // Attempt to delete the existing pod if it exists
     err = DeletePodIfExists(clientset, namespace, podName)

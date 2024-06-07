@@ -4,6 +4,7 @@ import (
     "context"
     "log"
     "time"
+    "fmt"
 
     batchv1 "k8s.io/api/batch/v1"
     corev1 "k8s.io/api/core/v1"
@@ -30,8 +31,9 @@ func removeFinalizers(clientset *kubernetes.Clientset, namespace, jobName string
 }
 
 // CreateBuildJob creates a Kubernetes Job to run a Kaniko build
-func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, imageName, dockerSecretName string) error {
-    jobName := "docker-build-job"
+func CreateBuildJob(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName string) error {
+    jobName := fmt.Sprintf("%s-docker-build-job", name)
+ 
 
     // Attempt to get the existing job
     job, err := clientset.BatchV1().Jobs(namespace).Get(context.Background(), jobName, metav1.GetOptions{})

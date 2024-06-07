@@ -6,15 +6,17 @@ import (
 
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
 
 // CreateBuildJob creates a Kubernetes Job to run a Kaniko build
 func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, imageName, dockerSecretName string) error {
+	jobName := "docker-build-job"
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "docker-build-job",
+			Name: jobName,
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
@@ -78,7 +80,26 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
 		},
 	}
 
-	_, err := clientset.BatchV1().Jobs(namespace).Create(context.Background(), job, metav1.CreateOptions{})
+	// Check if the job already exists
+	existingJob, err := clientset.BatchV1().Jobs(namespace).Get(context.Background(), jobName, metav1.GetOptions{})
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			log.Printf("Failed to get Job: %v", err)
+			return err
+		}
+	}
+
+	// If job exists, delete it first
+	if existingJob != nil {
+		err = clientset.BatchV1().Jobs(namespace).Delete(context.Background(), jobName, metav1.DeleteOptions{})
+		if err != nil {
+			log.Printf("Failed to delete existing Job: %v", err)
+			return err
+		}
+	}
+
+	// Create a new job
+	_, err = clientset.BatchV1().Jobs(namespace).Create(context.Background(), job, metav1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create Job: %v", err)
 		return err

@@ -96,7 +96,7 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
                             VolumeMounts: []corev1.VolumeMount{
                                 {
                                     Name:      "dockerfile-config",
-                                    MountPath: "/config/Dockerfile",
+                                    MountPath: "/config",
                                 },
                                 {
                                     Name:      "workspace",
@@ -117,6 +117,12 @@ func CreateBuildJob(clientset *kubernetes.Clientset, namespace, configMapName, i
                                 ConfigMap: &corev1.ConfigMapVolumeSource{
                                     LocalObjectReference: corev1.LocalObjectReference{
                                         Name: configMapName,
+                                    },
+                                    Items: []corev1.KeyToPath{
+                                        {
+                                            Key:  "Dockerfile",
+                                            Path: "Dockerfile",
+                                        },
                                     },
                                 },
                             },

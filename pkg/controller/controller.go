@@ -277,7 +277,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
     }
 
     imageName := observed.Parent.Spec.ContainerRegistry.ImageName
-    err = container.CreateBuildJob(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+    err = container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
     if err != nil {
         log.Printf("Error creating build job: %v", err)
         return map[string]interface{}{

@@ -5,7 +5,6 @@ import (
     "log"
     "fmt"
 
-    batchv1 "k8s.io/api/batch/v1"
     corev1 "k8s.io/api/core/v1"
     apierrors "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,122 +12,115 @@ import (
     "k8s.io/client-go/kubernetes"
 )
 
-// removeFinalizers removes all finalizers from the job
-func removeFinalizers(clientset *kubernetes.Clientset, namespace, jobName string) error {
+// removeFinalizers removes all finalizers from the Pod
+func removeFinalizers(clientset *kubernetes.Clientset, namespace, podName string) error {
     patch := []byte(`{"metadata":{"finalizers":[]}}`)
-    _, err := clientset.BatchV1().Jobs(namespace).Patch(context.Background(), jobName, types.MergePatchType, patch, metav1.PatchOptions{})
+    _, err := clientset.CoreV1().Pods(namespace).Patch(context.Background(), podName, types.MergePatchType, patch, metav1.PatchOptions{})
     if err != nil {
-        log.Printf("Failed to remove finalizers from Job: %v", err)
+        log.Printf("Failed to remove finalizers from Pod: %v", err)
     }
     return err
 }
 
-// CreateBuildJob creates a Kubernetes Job to run a Kaniko build
-func CreateBuildJob(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName string) error {
-    jobName := fmt.Sprintf("%s-docker-build-job", name)
+// CreateBuildPod creates a Kubernetes Pod to run a Kaniko build
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName string) error {
+    podName := fmt.Sprintf("%s-docker-build-pod", name)
  
-    // Attempt to get the existing job
-    job, err := clientset.BatchV1().Jobs(namespace).Get(context.Background(), jobName, metav1.GetOptions{})
+    // Attempt to get the existing pod
+    pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
     if err == nil {
-        // Job exists, attempt to remove finalizers
-        if len(job.ObjectMeta.Finalizers) > 0 {
-            log.Printf("Removing finalizers from Job: %s", jobName)
-            err := removeFinalizers(clientset, namespace, jobName)
+        // Pod exists, attempt to remove finalizers
+        if len(pod.ObjectMeta.Finalizers) > 0 {
+            log.Printf("Removing finalizers from Pod: %s", podName)
+            err := removeFinalizers(clientset, namespace, podName)
             if err != nil {
                 return err
             }
         }
 
-        // Delete the job
-        deletePolicy := metav1.DeletePropagationForeground
-        err = clientset.BatchV1().Jobs(namespace).Delete(context.Background(), jobName, metav1.DeleteOptions{
-            PropagationPolicy: &deletePolicy,
-        })
+        // Delete the pod
+        err = clientset.CoreV1().Pods(namespace).Delete(context.Background(), podName, metav1.DeleteOptions{})
         if err != nil {
-            log.Printf("Failed to delete existing Job: %v", err)
+            log.Printf("Failed to delete existing Pod: %v", err)
             return err
         }
-        log.Printf("Deleted existing Job: %s", jobName)
+        log.Printf("Deleted existing Pod: %s", podName)
     } else if !apierrors.IsNotFound(err) {
-        log.Printf("Error checking for existing Job: %v", err)
+        log.Printf("Error checking for existing Pod: %v", err)
         return err
     } else {
-        log.Printf("No existing Job to delete: %s", jobName)
+        log.Printf("No existing Pod to delete: %s", podName)
     }
 
-    job = &batchv1.Job{
+    pod = &corev1.Pod{
         ObjectMeta: metav1.ObjectMeta{
-            Name: jobName,
+            Name: podName,
         },
-        Spec: batchv1.JobSpec{
-            Template: corev1.PodTemplateSpec{
-                Spec: corev1.PodSpec{
-                    Containers: []corev1.Container{
+        Spec: corev1.PodSpec{
+            Containers: []corev1.Container{
+                {
+                    Name:  "kaniko",
+                    Image: "gcr.io/kaniko-project/executor:v1.23.1-debug",
+                    Args: []string{
+                        "--dockerfile=/config/Dockerfile",
+                        "--destination=" + imageName,
+                        "--context=/workspace/",
+                    },
+                    Env: []corev1.EnvVar{
                         {
-                            Name:  "kaniko",
-                            Image: "gcr.io/kaniko-project/executor:v1.23.1-debug",
-                            Args: []string{
-                                "--dockerfile=/config/Dockerfile",
-                                "--destination=" + imageName,
-                                "--context=/workspace/",
+                            Name:  "DOCKER_CONFIG",
+                            Value: "/root/.docker",
+                        },
+                    },
+                    VolumeMounts: []corev1.VolumeMount{
+                        {
+                            Name:      "dockerfile-config",
+                            MountPath: "/config",
+                        },
+                        {
+                            Name:      "workspace",
+                            MountPath: "/workspace",
+                        },
+                        {
+                            Name:      "docker-credentials",
+                            MountPath: "/kaniko/.docker",
+                        },
+                    },
+                },
+            },
+            RestartPolicy: corev1.RestartPolicyNever,
+            Volumes: []corev1.Volume{
+                {
+                    Name: "dockerfile-config",
+                    VolumeSource: corev1.VolumeSource{
+                        ConfigMap: &corev1.ConfigMapVolumeSource{
+                            LocalObjectReference: corev1.LocalObjectReference{
+                                Name: configMapName,
                             },
-                            Env: []corev1.EnvVar{
+                            Items: []corev1.KeyToPath{
                                 {
-                                    Name:  "DOCKER_CONFIG",
-                                    Value: "/root/.docker",
-                                },
-                            },
-                            VolumeMounts: []corev1.VolumeMount{
-                                {
-                                    Name:      "dockerfile-config",
-                                    MountPath: "/config",
-                                },
-                                {
-                                    Name:      "workspace",
-                                    MountPath: "/workspace",
-                                },
-                                {
-                                    Name:      "docker-credentials",
-                                    MountPath: "/kaniko/.docker",
+                                    Key:  "Dockerfile",
+                                    Path: "Dockerfile",
                                 },
                             },
                         },
                     },
-                    RestartPolicy: corev1.RestartPolicyNever,
-                    Volumes: []corev1.Volume{
-                        {
-                            Name: "dockerfile-config",
-                            VolumeSource: corev1.VolumeSource{
-                                ConfigMap: &corev1.ConfigMapVolumeSource{
-                                    LocalObjectReference: corev1.LocalObjectReference{
-                                        Name: configMapName,
-                                    },
-                                    Items: []corev1.KeyToPath{
-                                        {
-                                            Key:  "Dockerfile",
-                                            Path: "Dockerfile",
-                                        },
-                                    },
-                                },
-                            },
-                        },
-                        {
-                            Name: "workspace",
-                            VolumeSource: corev1.VolumeSource{
-                                EmptyDir: &corev1.EmptyDirVolumeSource{},
-                            },
-                        },
-                        {
-                            Name: "docker-credentials",
-                            VolumeSource: corev1.VolumeSource{
-                                Secret: &corev1.SecretVolumeSource{
-                                    SecretName: dockerSecretName,
-                                    Items: []corev1.KeyToPath{
-                                        {
-                                            Key:  ".dockerconfigjson",
-                                            Path: "config.json",
-                                        },
-                                    },
+                },
+                {
+                    Name: "workspace",
+                    VolumeSource: corev1.VolumeSource{
+                        EmptyDir: &corev1.EmptyDirVolumeSource{},
+                    },
+                },
+                {
+                    Name: "docker-credentials",
+                    VolumeSource: corev1.VolumeSource{
+                        Secret: &corev1.SecretVolumeSource{
+                            SecretName: dockerSecretName,
+                            Items: []corev1.KeyToPath{
+                                {
+                                    Key:  ".dockerconfigjson",
+                                    Path: "config.json",
                                 },
                             },
                         },
@@ -138,13 +130,13 @@ func CreateBuildJob(clientset *kubernetes.Clientset, name, namespace, configMapN
         },
     }
 
-    // Create the job
-    _, err = clientset.BatchV1().Jobs(namespace).Create(context.Background(), job, metav1.CreateOptions{})
+    // Create the pod
+    _, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
     if err != nil {
-        log.Printf("Failed to create Job: %v", err)
+        log.Printf("Failed to create Pod: %v", err)
         return err
     }
 
-    log.Printf("Created Job: %s", jobName)
+    log.Printf("Created Pod: %s", podName)
     return nil
 }

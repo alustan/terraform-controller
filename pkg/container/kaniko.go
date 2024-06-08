@@ -3,7 +3,6 @@ package container
 import (
     "context"
     "log"
-    "time"
     "fmt"
 
     batchv1 "k8s.io/api/batch/v1"
@@ -12,12 +11,6 @@ import (
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/types"
     "k8s.io/client-go/kubernetes"
-)
-
-// Retry parameters
-const (
-    retryInterval = 2 * time.Minute
-    maxRetries    = 10
 )
 
 // removeFinalizers removes all finalizers from the job
@@ -63,21 +56,6 @@ func CreateBuildJob(clientset *kubernetes.Clientset, name, namespace, configMapN
         log.Printf("No existing Job to delete: %s", jobName)
     }
 
-    // Retry loop to wait for the job to be fully deleted
-    for i := 0; i < maxRetries; i++ {
-        _, err := clientset.BatchV1().Jobs(namespace).Get(context.Background(), jobName, metav1.GetOptions{})
-        if apierrors.IsNotFound(err) {
-            // Job does not exist, safe to create
-            break
-        } else if err != nil {
-            // If error is not NotFound, something went wrong
-            log.Printf("Error checking if job exists: %v", err)
-            return err
-        }
-        log.Printf("Job %s is still being deleted, retrying...", jobName)
-        time.Sleep(time.Duration(i+1) * retryInterval)
-    }
-
     job = &batchv1.Job{
         ObjectMeta: metav1.ObjectMeta{
             Name: jobName,
@@ -88,7 +66,7 @@ func CreateBuildJob(clientset *kubernetes.Clientset, name, namespace, configMapN
                     Containers: []corev1.Container{
                         {
                             Name:  "kaniko",
-                            Image: "gcr.io/kaniko-project/executor:debug-v1.23.0",
+                            Image: "gcr.io/kaniko-project/executor:v1.23.1-debug",
                             Args: []string{
                                 "--dockerfile=/config/Dockerfile",
                                 "--destination=" + imageName,
@@ -155,7 +133,6 @@ func CreateBuildJob(clientset *kubernetes.Clientset, name, namespace, configMapN
                             },
                         },
                     },
-                   
                 },
             },
         },

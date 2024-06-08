@@ -10,6 +10,7 @@ import (
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/types"
     "k8s.io/client-go/kubernetes"
+ 
 )
 
 // removeFinalizers removes all finalizers from the Pod
@@ -23,7 +24,13 @@ func removeFinalizers(clientset *kubernetes.Clientset, namespace, podName string
 }
 
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build
-func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName string) error {
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName string) error {
+    err := EnsurePVC(clientset, namespace, pvcName)
+    if err != nil {
+        log.Printf("Failed to ensure PVC: %v", err)
+        return err
+    }
+   
     podName := fmt.Sprintf("%s-docker-build-pod", name)
  
     // Attempt to get the existing pod
@@ -83,7 +90,11 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
                         },
                         {
                             Name:      "docker-credentials",
-                            MountPath: "/kaniko/.docker",
+                            MountPath: "/root/.docker",
+                        },
+                        {
+                            Name:      "kaniko-logs",
+                            MountPath: "/logs",
                         },
                     },
                 },
@@ -126,9 +137,18 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
                         },
                     },
                 },
+                {
+                    Name: "kaniko-logs",
+                    VolumeSource: corev1.VolumeSource{
+                        PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+                            ClaimName: pvcName,
+                        },
+                    },
+                },
             },
         },
     }
+    
 
     // Create the pod
     _, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})

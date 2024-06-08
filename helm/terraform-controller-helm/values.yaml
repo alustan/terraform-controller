@@ -6,13 +6,13 @@ image:
   repository: alustan/terraform-controller
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.8.0"
+  tag: "v0.23.0"
 
 imagePullSecrets: []
 nameOverride: "terraform-controller-helm"
 fullnameOverride: "terraform-controller-helm"
 
-syncInterval: "1m"
+syncInterval: "10m"
 
 serviceAccount:
   # Specifies whether a service account should be created

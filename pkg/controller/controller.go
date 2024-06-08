@@ -208,7 +208,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         }
     }
 
-    repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
+    repoDir := filepath.Join("/workspace/tmp", observed.Parent.Metadata.Name)
 
     var sshKey string
     gitRepo := observed.Parent.Spec.GitRepo
@@ -276,8 +276,9 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         }
     }
 
+    pvcName :=  fmt.Sprintf("%s-terraform-pvc", observed.Parent.Metadata.Name)
     imageName := observed.Parent.Spec.ContainerRegistry.ImageName
-    err = container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+    err = container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name,observed.Parent.Metadata.Namespace, configMapName, imageName, pvcName,observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
     if err != nil {
         log.Printf("Error creating build job: %v", err)
         return map[string]interface{}{
@@ -286,7 +287,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         }
     }
 
-    pvcName :=  fmt.Sprintf("%s-terraform-pvc", observed.Parent.Metadata.Name)
+    
     var terraformErr error
     for i := 0; i < maxRetries; i++ {
         terraformErr = container.CreateRunPod(c.clientset,observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, imageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
@@ -294,7 +295,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
             break
         }
         log.Printf("Retrying Terraform command due to error: %v", terraformErr)
-        time.Sleep(2 * time.Second)
+        time.Sleep(1 * time.Minute)
     }
 
     status := map[string]interface{}{

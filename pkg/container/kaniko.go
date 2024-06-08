@@ -16,7 +16,7 @@ import (
 
 // Retry parameters
 const (
-    retryInterval = 2 * time.Second
+    retryInterval = 2 * time.Minute
     maxRetries    = 10
 )
 
@@ -34,7 +34,6 @@ func removeFinalizers(clientset *kubernetes.Clientset, namespace, jobName string
 func CreateBuildJob(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName string) error {
     jobName := fmt.Sprintf("%s-docker-build-job", name)
  
-
     // Attempt to get the existing job
     job, err := clientset.BatchV1().Jobs(namespace).Get(context.Background(), jobName, metav1.GetOptions{})
     if err == nil {
@@ -89,11 +88,17 @@ func CreateBuildJob(clientset *kubernetes.Clientset, name, namespace, configMapN
                     Containers: []corev1.Container{
                         {
                             Name:  "kaniko",
-                            Image: "gcr.io/kaniko-project/executor:v1.23.0",
+                            Image: "gcr.io/kaniko-project/executor:debug-v1.23.0",
                             Args: []string{
                                 "--dockerfile=/config/Dockerfile",
                                 "--destination=" + imageName,
                                 "--context=/workspace/",
+                            },
+                            Env: []corev1.EnvVar{
+                                {
+                                    Name:  "DOCKER_CONFIG",
+                                    Value: "/root/.docker",
+                                },
                             },
                             VolumeMounts: []corev1.VolumeMount{
                                 {
@@ -150,11 +155,7 @@ func CreateBuildJob(clientset *kubernetes.Clientset, name, namespace, configMapN
                             },
                         },
                     },
-                    ImagePullSecrets: []corev1.LocalObjectReference{
-                        {
-                            Name: dockerSecretName,
-                        },
-                    },
+                   
                 },
             },
         },

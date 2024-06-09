@@ -2,15 +2,15 @@ package container
 
 import (
     "context"
-    "log"
     "fmt"
+    "log"
+
 
     corev1 "k8s.io/api/core/v1"
     apierrors "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/types"
     "k8s.io/client-go/kubernetes"
- 
 )
 
 // removeFinalizers removes all finalizers from the Pod
@@ -24,15 +24,15 @@ func removeFinalizers(clientset *kubernetes.Clientset, namespace, podName string
 }
 
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build
-func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName string) error {
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) error {
     err := EnsurePVC(clientset, namespace, pvcName)
     if err != nil {
         log.Printf("Failed to ensure PVC: %v", err)
         return err
     }
-   
+
     podName := fmt.Sprintf("%s-docker-build-pod", name)
- 
+
     // Attempt to get the existing pod
     pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
     if err == nil {
@@ -71,7 +71,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
                     Args: []string{
                         "--dockerfile=/config/Dockerfile",
                         "--destination=" + imageName,
-                        "--context=/workspace/",
+                        "--context=/workspace/" + name,  
                     },
                     Env: []corev1.EnvVar{
                         {
@@ -120,7 +120,9 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
                 {
                     Name: "workspace",
                     VolumeSource: corev1.VolumeSource{
-                        EmptyDir: &corev1.EmptyDirVolumeSource{},
+                        HostPath: &corev1.HostPathVolumeSource{
+                            Path: repoDir,  // Host path to the cloned repository
+                        },
                     },
                 },
                 {
@@ -148,7 +150,6 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
             },
         },
     }
-    
 
     // Create the pod
     _, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})

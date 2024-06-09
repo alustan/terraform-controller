@@ -208,7 +208,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         }
     }
 
-    repoDir := filepath.Join("/workspace/tmp", observed.Parent.Metadata.Name)
+    repoDir := filepath.Join("/workspace", observed.Parent.Metadata.Name)
 
     var sshKey string
     gitRepo := observed.Parent.Spec.GitRepo
@@ -267,7 +267,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         dockerfileAdditions = ""
     }
 
-    configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, repoDir, dockerfileAdditions, providerExists)
+    configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace,  dockerfileAdditions, providerExists)
     if err != nil {
         log.Printf("Error creating Dockerfile ConfigMap: %v", err)
         return map[string]interface{}{
@@ -278,7 +278,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 
     pvcName :=  fmt.Sprintf("%s-terraform-pvc", observed.Parent.Metadata.Name)
     imageName := observed.Parent.Spec.ContainerRegistry.ImageName
-    err = container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name,observed.Parent.Metadata.Namespace, configMapName, imageName, pvcName,observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+    err = container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name,observed.Parent.Metadata.Namespace, configMapName, imageName, pvcName,observed.Parent.Spec.ContainerRegistry.SecretRef.Name,repoDir)
     if err != nil {
         log.Printf("Error creating build job: %v", err)
         return map[string]interface{}{

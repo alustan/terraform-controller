@@ -12,9 +12,44 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// DeleteConfigMapIfExists deletes the ConfigMap if it already exists.
+func DeleteConfigMapIfExists(clientset *kubernetes.Clientset, namespace, configMapName string) error {
+	// Check if the ConfigMap exists
+	_, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
+	if err == nil {
+		// ConfigMap exists, retry deletion up to 5 times with a 1-minute interval
+		maxAttempts := 5
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			err := clientset.CoreV1().ConfigMaps(namespace).Delete(context.Background(), configMapName, metav1.DeleteOptions{})
+			if err == nil {
+				log.Printf("Deleted existing ConfigMap: %s", configMapName)
+				break
+			} else if apierrors.IsNotFound(err) {
+				log.Printf("No existing ConfigMap to delete: %s", configMapName)
+				break
+			} else {
+				log.Printf("Attempt %d: Failed to delete existing ConfigMap: %v", attempt, err)
+				if attempt < maxAttempts {
+					time.Sleep(1 * time.Minute)
+				} else {
+					log.Printf("Max attempts reached. Giving up on deleting ConfigMap: %s", configMapName)
+					return err
+				}
+			}
+		}
+	} else if !apierrors.IsNotFound(err) {
+		log.Printf("Failed to get ConfigMap: %v", err)
+		return err
+	} else {
+		log.Printf("No existing ConfigMap to delete: %s", configMapName)
+	}
+	return nil
+}
+
+// CreateDockerfileConfigMap creates a Kubernetes ConfigMap with the provided Dockerfile content.
 func CreateDockerfileConfigMap(clientset *kubernetes.Clientset, name, namespace, additionalTools string, providerExists bool) (string, error) {
-    // Initialize Dockerfile content
-    content := `
+	// Initialize Dockerfile content
+	content := `
 FROM ubuntu:latest
 
 RUN apt-get update && \
@@ -36,13 +71,13 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
     rm kubectl
 `
 
-    // Include additionalTools if the provider exists
-    if providerExists {
-        content += additionalTools
-    }
+	// Include additionalTools if the provider exists
+	if providerExists {
+		content += additionalTools
+	}
 
-    // Append default content to the Dockerfile
-    content += `
+	// Append default content to the Dockerfile
+	content += `
 WORKDIR /app
 
 COPY . ./
@@ -50,54 +85,30 @@ COPY . ./
 CMD ["/bin/bash"]
 `
 
-    configMapName := fmt.Sprintf("%s-dockerfile-configmap", name)
-    // Create ConfigMap with the Dockerfile content
-    configMap := &corev1.ConfigMap{
-        ObjectMeta: metav1.ObjectMeta{
-            Name: configMapName,
-        },
-        Data: map[string]string{
-            "Dockerfile": content,
-        },
-    }
+	configMapName := fmt.Sprintf("%s-dockerfile-configmap", name)
 
-    // Check if the ConfigMap exists
-    _, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
-    if err == nil {
-        // ConfigMap exists, retry deletion up to 5 times with a 1-minute interval
-        maxAttempts := 5
-        for attempt := 1; attempt <= maxAttempts; attempt++ {
-            err := clientset.CoreV1().ConfigMaps(namespace).Delete(context.Background(), configMapName, metav1.DeleteOptions{})
-            if err == nil {
-                log.Printf("Deleted existing ConfigMap: %s", configMapName)
-                break
-            } else if apierrors.IsNotFound(err) {
-                log.Printf("No existing ConfigMap to delete: %s", configMapName)
-                break
-            } else {
-                log.Printf("Attempt %d: Failed to delete existing ConfigMap: %v", attempt, err)
-                if attempt < maxAttempts {
-                    time.Sleep(1 * time.Minute)
-                } else {
-                    log.Printf("Max attempts reached. Giving up on deleting ConfigMap: %s", configMapName)
-                    return "", err
-                }
-            }
-        }
-    } else if !apierrors.IsNotFound(err) {
-        log.Printf("Failed to get ConfigMap: %v", err)
-        return "", err
-    } else {
-        log.Printf("No existing ConfigMap to delete: %s", configMapName)
-    }
+	// Attempt to delete the existing ConfigMap if it exists
+	err := DeleteConfigMapIfExists(clientset, namespace, configMapName)
+	if err != nil {
+		return "", err
+	}
 
-    // Create the new ConfigMap
-    _, err = clientset.CoreV1().ConfigMaps(namespace).Create(context.Background(), configMap, metav1.CreateOptions{})
-    if err != nil {
-        log.Printf("Failed to create ConfigMap: %v", err)
-        return "", err
-    }
+	// Create the new ConfigMap
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: configMapName,
+		},
+		Data: map[string]string{
+			"Dockerfile": content,
+		},
+	}
 
-    log.Printf("Created ConfigMap: %s", configMapName)
-    return configMap.Name, nil
+	_, err = clientset.CoreV1().ConfigMaps(namespace).Create(context.Background(), configMap, metav1.CreateOptions{})
+	if err != nil {
+		log.Printf("Failed to create ConfigMap: %v", err)
+		return "", err
+	}
+
+	log.Printf("Created ConfigMap: %s", configMapName)
+	return configMapName, nil
 }

@@ -47,10 +47,27 @@ func deletePodWithRetry(clientset *kubernetes.Clientset, namespace, podName stri
 	return fmt.Errorf("failed to delete Pod %s after %d attempts", podName, maxAttempts)
 }
 
+// WaitForPodDeletion waits until the specified pod is deleted
+func WaitForPodDeletion(clientset *kubernetes.Clientset, namespace, podName string) error {
+	for {
+		_, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			log.Printf("Pod %s is confirmed deleted", podName)
+			return nil
+		}
+		if err != nil {
+			log.Printf("Error getting Pod: %v", err)
+			return err
+		}
+		log.Printf("Pod %s is still being deleted. Waiting...", podName)
+		time.Sleep(5 * time.Second)
+	}
+}
+
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build
 func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) (string, error) {
 	err := EnsurePVC(clientset, namespace, pvcName)
-	if (err != nil) {
+	if err != nil {
 		log.Printf("Failed to ensure PVC: %v", err)
 		return "", err
 	}
@@ -59,19 +76,25 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 
 	// Attempt to get the existing pod
 	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
-	if (err == nil) {
+	if err == nil {
 		// Pod exists, attempt to remove finalizers
-		if (len(pod.ObjectMeta.Finalizers) > 0) {
+		if len(pod.ObjectMeta.Finalizers) > 0 {
 			log.Printf("Removing finalizers from Pod: %s", podName)
 			err := removeFinalizers(clientset, namespace, podName)
-			if (err != nil) {
+			if err != nil {
 				return "", err
 			}
 		}
 
 		// Delete the pod with retry logic
 		err = deletePodWithRetry(clientset, namespace, podName)
-		if (err != nil) {
+		if err != nil {
+			return "", err
+		}
+
+		// Wait for pod deletion to complete
+		err = WaitForPodDeletion(clientset, namespace, podName)
+		if err != nil {
 			return "", err
 		}
 	} else if !apierrors.IsNotFound(err) {
@@ -179,7 +202,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 
 	// Create the pod
 	_, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
-	if (err != nil) {
+	if err != nil {
 		log.Printf("Failed to create Pod: %v", err)
 		return "", err
 	}

@@ -13,6 +13,18 @@ import (
 )
 
 
+// checkExistingPods checks for existing pods with the specified label.
+func checkExistingRunPods(clientset *kubernetes.Clientset, namespace, labelSelector string) (bool, error) {
+	pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return len(pods.Items) > 0, nil
+}
+
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.
 func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVars map[string]string, scriptContent, taggedImageName, pvcName, imagePullSecretName string) error {
 	err := EnsurePVC(clientset, namespace, pvcName)
@@ -24,6 +36,19 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 	// Generate a unique pod name using the current timestamp
 	timestamp := time.Now().Format("20060102150405")
 	podName := fmt.Sprintf("%s-docker-run-pod-%s", name, timestamp)
+	labelSelector := fmt.Sprintf("app-run=%s", name)
+
+	// Check for existing pods with the same label
+	exists, err := checkExistingRunPods(clientset, namespace, labelSelector)
+	if err != nil {
+		log.Printf("Error checking existing pods: %v", err)
+		return err
+	}
+
+	if exists {
+		log.Printf("Existing pods with label %s found, not creating new pod.", labelSelector)
+		return nil
+	}
 
 	log.Printf("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
 
@@ -41,6 +66,9 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
+			Labels: map[string]string{
+				"app": name,
+			},
 			Annotations: map[string]string{
 				"kubectl.kubernetes.io/ttl": "3600", // TTL in seconds (1 hour)
 			},

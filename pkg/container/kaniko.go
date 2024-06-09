@@ -34,11 +34,11 @@ func checkExistingBuildPods(clientset *kubernetes.Clientset, namespace, labelSel
 }
 
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build.
-func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) (string, error) {
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) (string, string, error){
 	err := EnsurePVC(clientset, namespace, pvcName)
 	if (err != nil) {
 		log.Printf("Failed to ensure PVC: %v", err)
-		return "", err
+		return "", "",err
 	}
 
 	labelSelector := fmt.Sprintf("appbuild=%s", name)
@@ -47,12 +47,12 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 	exists, err := checkExistingBuildPods(clientset, namespace, labelSelector)
 	if err != nil {
 		log.Printf("Error checking existing pods: %v", err)
-		return "", err
+		return "","", err
 	}
 
 	if exists {
 		log.Printf("Existing pods with label %s found, not creating new pod.", labelSelector)
-		return "", fmt.Errorf("existing build pod already running")
+		return "", "",fmt.Errorf("existing build pod already running")
 	}
 
 	// Generate a unique pod name using the current timestamp
@@ -165,10 +165,10 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 	_, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create Pod: %v", err)
-		return "", err
+		return "","", err
 	}
 
 	log.Printf("Created Pod: %s", podName)
 	log.Printf("Image will be pushed with tag: %s", taggedImageName)
-	return taggedImageName, nil
+	return taggedImageName, podName, nil
 }

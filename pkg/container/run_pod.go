@@ -25,7 +25,24 @@ func RemoveFinalizersFromPod(clientset *kubernetes.Clientset, namespace, podName
 	return nil
 }
 
-// deletePodWithRetry attempts to delete a Pod with retry logic
+// WaitForPodDeletion waits until the specified pod is deleted
+func WaitForPodDeletion(clientset *kubernetes.Clientset, namespace, podName string) error {
+	for {
+		_, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			log.Printf("Pod %s is confirmed deleted", podName)
+			return nil
+		}
+		if err != nil {
+			log.Printf("Error getting Pod: %v", err)
+			return err
+		}
+		log.Printf("Pod %s is still being deleted. Waiting...", podName)
+		time.Sleep(5 * time.Second)
+	}
+}
+
+// deleteRunPodWithRetry attempts to delete a Pod with retry logic
 func deleteRunPodWithRetry(clientset *kubernetes.Clientset, namespace, podName string) error {
 	maxAttempts := 5
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -72,7 +89,13 @@ func DeletePodIfExists(clientset *kubernetes.Clientset, namespace, podName strin
 	}
 
 	// Delete the Pod with retry logic
-	return deleteRunPodWithRetry(clientset, namespace, podName)
+	err = deleteRunPodWithRetry(clientset, namespace, podName)
+	if err != nil {
+		return err
+	}
+
+	// Wait for pod deletion to complete
+	return WaitForPodDeletion(clientset, namespace, podName)
 }
 
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.

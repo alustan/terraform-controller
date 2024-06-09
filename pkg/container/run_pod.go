@@ -8,12 +8,10 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	
 	"k8s.io/client-go/kubernetes"
 )
 
-
-// checkExistingPods checks for existing pods with the specified label.
+// checkExistingRunPods checks for existing running, pending, or container creating pods with the specified label.
 func checkExistingRunPods(clientset *kubernetes.Clientset, namespace, labelSelector string) (bool, error) {
 	pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: labelSelector,
@@ -22,7 +20,17 @@ func checkExistingRunPods(clientset *kubernetes.Clientset, namespace, labelSelec
 		return false, err
 	}
 
-	return len(pods.Items) > 0, nil
+	for _, pod := range pods.Items {
+		if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodPending {
+			return true, nil
+		}
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			if containerStatus.State.Waiting != nil && containerStatus.State.Waiting.Reason == "ContainerCreating" {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.
@@ -33,10 +41,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 		return err
 	}
 
-	// Generate a unique pod name using the current timestamp
-	timestamp := time.Now().Format("20060102150405")
-	podName := fmt.Sprintf("%s-docker-run-pod-%s", name, timestamp)
-	labelSelector := fmt.Sprintf("app-run=%s", name)
+	labelSelector := fmt.Sprintf("apprun=%s", name)
 
 	// Check for existing pods with the same label
 	exists, err := checkExistingRunPods(clientset, namespace, labelSelector)
@@ -49,6 +54,10 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 		log.Printf("Existing pods with label %s found, not creating new pod.", labelSelector)
 		return nil
 	}
+
+	// Generate a unique pod name using the current timestamp
+	timestamp := time.Now().Format("20060102150405")
+	podName := fmt.Sprintf("%s-docker-run-pod-%s", name, timestamp)
 
 	log.Printf("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
 
@@ -67,7 +76,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
 			Labels: map[string]string{
-				"app": name,
+				"apprun": name,
 			},
 			Annotations: map[string]string{
 				"kubectl.kubernetes.io/ttl": "3600", // TTL in seconds (1 hour)

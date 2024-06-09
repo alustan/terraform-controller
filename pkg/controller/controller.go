@@ -278,7 +278,8 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 
     pvcName :=  fmt.Sprintf("%s-terraform-pvc", observed.Parent.Metadata.Name)
     imageName := observed.Parent.Spec.ContainerRegistry.ImageName
-    err = container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name,observed.Parent.Metadata.Namespace, configMapName, imageName, pvcName,observed.Parent.Spec.ContainerRegistry.SecretRef.Name,repoDir)
+    
+    taggedImageName, err := container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name,observed.Parent.Metadata.Namespace, configMapName, imageName, pvcName,observed.Parent.Spec.ContainerRegistry.SecretRef.Name,repoDir)
     if err != nil {
         log.Printf("Error creating build job: %v", err)
         return map[string]interface{}{
@@ -290,7 +291,8 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
     
     var terraformErr error
     for i := 0; i < maxRetries; i++ {
-        terraformErr = container.CreateRunPod(c.clientset,observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, imageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+        // Create the run pod using the tagged image name
+	terraformErr = container.CreateRunPod(c.clientset,observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
         if terraformErr == nil {
             break
         }

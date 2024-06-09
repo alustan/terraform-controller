@@ -48,35 +48,35 @@ func deletePodWithRetry(clientset *kubernetes.Clientset, namespace, podName stri
 }
 
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build
-func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) error {
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) (string, error) {
 	err := EnsurePVC(clientset, namespace, pvcName)
-	if err != nil {
+	if (err != nil) {
 		log.Printf("Failed to ensure PVC: %v", err)
-		return err
+		return "", err
 	}
 
 	podName := fmt.Sprintf("%s-docker-build-pod", name)
 
 	// Attempt to get the existing pod
 	pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
-	if err == nil {
+	if (err == nil) {
 		// Pod exists, attempt to remove finalizers
-		if len(pod.ObjectMeta.Finalizers) > 0 {
+		if (len(pod.ObjectMeta.Finalizers) > 0) {
 			log.Printf("Removing finalizers from Pod: %s", podName)
 			err := removeFinalizers(clientset, namespace, podName)
-			if err != nil {
-				return err
+			if (err != nil) {
+				return "", err
 			}
 		}
 
 		// Delete the pod with retry logic
 		err = deletePodWithRetry(clientset, namespace, podName)
-		if err != nil {
-			return err
+		if (err != nil) {
+			return "", err
 		}
 	} else if !apierrors.IsNotFound(err) {
 		log.Printf("Error checking for existing Pod: %v", err)
-		return err
+		return "", err
 	} else {
 		log.Printf("No existing Pod to delete: %s", podName)
 	}
@@ -97,7 +97,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					Args: []string{
 						"--dockerfile=/config/Dockerfile",
 						"--destination=" + taggedImageName,
-						"--context=/tmp/" + name,
+						"--context=/workspace",
 					},
 					Env: []corev1.EnvVar{
 						{
@@ -179,12 +179,12 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 
 	// Create the pod
 	_, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
-	if err != nil {
+	if (err != nil) {
 		log.Printf("Failed to create Pod: %v", err)
-		return err
+		return "", err
 	}
 
 	log.Printf("Created Pod: %s", podName)
 	log.Printf("Image will be pushed with tag: %s", taggedImageName)
-	return nil
+	return taggedImageName, nil
 }

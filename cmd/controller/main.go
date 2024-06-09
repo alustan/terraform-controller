@@ -25,9 +25,11 @@ func main() {
 	fmt.Printf("Built by: %s\n", builtBy)
 	
 	r := gin.Default()
-	ctrl := controller.NewInClusterController() 
+	ctrl := controller.NewInClusterController()
 	syncInterval := util.GetSyncInterval()
+	log.Printf("Sync interval is set to %v", syncInterval)
 	go ctrl.Reconcile(syncInterval) // Start the reconciliation loop in a separate goroutine
+
 	r.POST("/sync", ctrl.ServeHTTP)
 
 	log.Println("Starting server on port 8080...")

@@ -333,6 +333,7 @@ func (c *Controller) Reconcile(syncInterval time.Duration) {
 }
 
 func (c *Controller) reconcileLoop() {
+	log.Println("Starting reconciliation loop")
 	resourceList, err := c.dynClient.Resource(schema.GroupVersionResource{
 		Group:    "alustan.io",
 		Version:  "v1alpha1",
@@ -342,6 +343,8 @@ func (c *Controller) reconcileLoop() {
 		log.Printf("Error fetching Terraform resources: %v", err)
 		return
 	}
+
+	log.Printf("Fetched %d Terraform resources", len(resourceList.Items))
 
 	for _, item := range resourceList.Items {
 		var observed SyncRequest
@@ -356,6 +359,8 @@ func (c *Controller) reconcileLoop() {
 			continue
 		}
 
+		log.Printf("Handling resource: %s", observed.Parent.Metadata.Name)
 		c.handleSyncRequest(observed)
 	}
 }
+

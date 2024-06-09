@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -63,13 +64,26 @@ CMD ["/bin/bash"]
     // Check if the ConfigMap exists
     _, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
     if err == nil {
-        // ConfigMap exists, delete it
-        err := clientset.CoreV1().ConfigMaps(namespace).Delete(context.Background(), configMapName, metav1.DeleteOptions{})
-        if err != nil {
-            log.Printf("Failed to delete existing ConfigMap: %v", err)
-            return "", err
+        // ConfigMap exists, retry deletion up to 5 times with a 1-minute interval
+        maxAttempts := 5
+        for attempt := 1; attempt <= maxAttempts; attempt++ {
+            err := clientset.CoreV1().ConfigMaps(namespace).Delete(context.Background(), configMapName, metav1.DeleteOptions{})
+            if err == nil {
+                log.Printf("Deleted existing ConfigMap: %s", configMapName)
+                break
+            } else if apierrors.IsNotFound(err) {
+                log.Printf("No existing ConfigMap to delete: %s", configMapName)
+                break
+            } else {
+                log.Printf("Attempt %d: Failed to delete existing ConfigMap: %v", attempt, err)
+                if attempt < maxAttempts {
+                    time.Sleep(1 * time.Minute)
+                } else {
+                    log.Printf("Max attempts reached. Giving up on deleting ConfigMap: %s", configMapName)
+                    return "", err
+                }
+            }
         }
-        log.Printf("Deleted existing ConfigMap: %s", configMapName)
     } else if !apierrors.IsNotFound(err) {
         log.Printf("Failed to get ConfigMap: %v", err)
         return "", err

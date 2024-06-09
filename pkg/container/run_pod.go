@@ -42,28 +42,13 @@ func WaitForRunPodDeletion(clientset *kubernetes.Clientset, namespace, podName s
 	}
 }
 
-// deleteRunPodWithRetry attempts to delete a Pod with retry logic
-func deleteRunPodWithRetry(clientset *kubernetes.Clientset, namespace, podName string) error {
-	maxAttempts := 5
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := clientset.CoreV1().Pods(namespace).Delete(context.Background(), podName, metav1.DeleteOptions{})
-		if err == nil {
-			log.Printf("Deleted existing Pod: %s", podName)
-			return nil
-		}
-		if apierrors.IsNotFound(err) {
-			log.Printf("Pod %s not found in namespace %s", podName, namespace)
-			return nil
-		}
-		log.Printf("Attempt %d: Failed to delete Pod: %v", attempt, err)
-		if attempt < maxAttempts {
-			time.Sleep(1 * time.Minute)
-		} else {
-			log.Printf("Max attempts reached. Giving up on deleting Pod: %s", podName)
-			return err
-		}
+// deleteRunPod attempts to delete a Pod
+func deleteRunPod(clientset *kubernetes.Clientset, namespace, podName string) error {
+	err := clientset.CoreV1().Pods(namespace).Delete(context.Background(), podName, metav1.DeleteOptions{})
+	if err != nil {
+		log.Printf("Failed to delete Pod: %v", err)
 	}
-	return fmt.Errorf("failed to delete Pod %s after %d attempts", podName, maxAttempts)
+	return err
 }
 
 // DeletePodIfExists deletes the Pod if it already exists, including removing finalizers if present.
@@ -88,8 +73,8 @@ func DeletePodIfExists(clientset *kubernetes.Clientset, namespace, podName strin
 		}
 	}
 
-	// Delete the Pod with retry logic
-	err = deleteRunPodWithRetry(clientset, namespace, podName)
+	// Delete the Pod
+	err = deleteRunPod(clientset, namespace, podName)
 	if err != nil {
 		return err
 	}

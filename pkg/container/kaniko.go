@@ -90,9 +90,9 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 	}
 
 	// Generate a unique tag using the current timestamp
-	// timestamp := time.Now().Format("20060102150405")
-	// taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
-	taggedImageName := fmt.Sprintf("%s", imageName)
+	timestamp := time.Now().Format("20060102150405")
+	taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
+
 
 	pod = &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

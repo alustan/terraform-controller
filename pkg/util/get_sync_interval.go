@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const defaultSyncInterval = 30 * time.Minute // Default sync interval
+const defaultSyncInterval = 60 * time.Minute // Default sync interval
 
 // GetSyncInterval retrieves the sync interval from the environment variable or returns the default value.
 func GetSyncInterval() time.Duration {

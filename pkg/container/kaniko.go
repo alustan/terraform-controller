@@ -45,7 +45,7 @@ func WaitForPodDeletion(clientset *kubernetes.Clientset, namespace, podName stri
 			return err
 		}
 		log.Printf("Pod %s is still being deleted. Waiting...", podName)
-		time.Sleep(5 * time.Second)
+		time.Sleep(30 * time.Second)
 	}
 }
 
@@ -90,8 +90,9 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 	}
 
 	// Generate a unique tag using the current timestamp
-	timestamp := time.Now().Format("20060102150405")
-	taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
+	// timestamp := time.Now().Format("20060102150405")
+	// taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
+	taggedImageName := fmt.Sprintf("%s", imageName)
 
 	pod = &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

@@ -192,12 +192,12 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 		return c.errorResponse("creating Dockerfile ConfigMap", err)
 	}
 
-	taggedImageName, err := c.buildAndTagImage(observed, configMapName, repoDir)
+	taggedImageName,podName, err := c.buildAndTagImage(observed, configMapName, repoDir)
 	if err != nil {
 		return c.errorResponse("creating build job", err)
 	}
 
-	if err := c.waitForBuildPodCompletion(observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name); err != nil {
+	if err := c.waitForBuildPodCompletion(observed.Parent.Metadata.Namespace, podName); err != nil {
 		return c.errorResponse("waiting for build pod completion", err)
 	}
 
@@ -275,7 +275,7 @@ func (c *Controller) setupBackend(backend map[string]string) (string, bool, erro
 	return provider.GetDockerfileAdditions(), true, nil
 }
 
-func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir string) (string, error) {
+func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir string) (string,string, error) {
 	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
 	pvcName := fmt.Sprintf("%s-terraform-pvc", observed.Parent.Metadata.Name)
 
@@ -294,15 +294,7 @@ func (c *Controller) waitForBuildPodCompletion(namespace, name string) error {
 
 		log.Printf("Current pod status: %v\n", pod.Status.Phase)
 
-		// Log detailed status of the pod
-		for _, containerStatus := range pod.Status.ContainerStatuses {
-			log.Printf("Container %s: State: %v, Ready: %v, RestartCount: %d, LastState: %v\n",
-				containerStatus.Name,
-				containerStatus.State,
-				containerStatus.Ready,
-				containerStatus.RestartCount,
-				containerStatus.LastTerminationState)
-		}
+	
 
 		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 			log.Println("Build pod completed.")

@@ -208,7 +208,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         }
     }
 
-    repoDir := filepath.Join("/workspace", observed.Parent.Metadata.Name)
+    repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
 
     var sshKey string
     gitRepo := observed.Parent.Spec.GitRepo

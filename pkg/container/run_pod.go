@@ -76,7 +76,7 @@ func DeletePodIfExists(clientset *kubernetes.Clientset, namespace, podName strin
 }
 
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVars map[string]string, scriptContent, imageName, pvcName, imagePullSecretName string) error {
+func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVars map[string]string, scriptContent, taggedImageName, pvcName, imagePullSecretName string) error {
 	err := EnsurePVC(clientset, namespace, pvcName)
 	if err != nil {
 		log.Printf("Failed to ensure PVC: %v", err)
@@ -91,7 +91,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 		return err
 	}
 
-	log.Printf("Creating Pod in namespace: %s with image: %s", namespace, imageName)
+	log.Printf("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
 
 	env := []v1.EnvVar{}
 	for key, value := range envVars {
@@ -112,7 +112,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 			Containers: []v1.Container{
 				{
 					Name:            "terraform",
-					Image:           imageName,
+					Image:           taggedImageName,
 					ImagePullPolicy: v1.PullAlways,
 					Command: []string{
 						"/bin/bash",

@@ -30,7 +30,7 @@ import (
 const (
 	maxRetries = 5
 	// Wait for the build pod to complete
-	maxWaitTime = 60 * time.Minute
+	maxWaitTime = 20 * time.Minute
 	checkInterval = 60 * time.Second
 )
 
@@ -292,6 +292,18 @@ func (c *Controller) waitForBuildPodCompletion(namespace, name string) error {
 			return fmt.Errorf("error getting build pod status: %v", err)
 		}
 
+		log.Printf("Current pod status: %v\n", pod.Status.Phase)
+
+		// Log detailed status of the pod
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			log.Printf("Container %s: State: %v, Ready: %v, RestartCount: %d, LastState: %v\n",
+				containerStatus.Name,
+				containerStatus.State,
+				containerStatus.Ready,
+				containerStatus.RestartCount,
+				containerStatus.LastTerminationState)
+		}
+
 		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
 			log.Println("Build pod completed.")
 			return nil
@@ -305,6 +317,7 @@ func (c *Controller) waitForBuildPodCompletion(namespace, name string) error {
 		time.Sleep(checkInterval)
 	}
 }
+
 
 func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedImageName string, envVars map[string]string) map[string]interface{} {
 	pvcName := fmt.Sprintf("%s-terraform-pvc", observed.Parent.Metadata.Name)

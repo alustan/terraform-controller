@@ -297,7 +297,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
             break
         }
         log.Printf("Retrying Terraform command due to error: %v", terraformErr)
-        time.Sleep(1 * time.Minute)
+        time.Sleep(2 * time.Minute)
     }
 
     status := map[string]interface{}{

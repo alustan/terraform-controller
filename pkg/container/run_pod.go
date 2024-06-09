@@ -26,7 +26,7 @@ func RemoveFinalizersFromPod(clientset *kubernetes.Clientset, namespace, podName
 }
 
 // WaitForPodDeletion waits until the specified pod is deleted
-func WaitForPodDeletion(clientset *kubernetes.Clientset, namespace, podName string) error {
+func WaitForRunPodDeletion(clientset *kubernetes.Clientset, namespace, podName string) error {
 	for {
 		_, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
@@ -95,7 +95,7 @@ func DeletePodIfExists(clientset *kubernetes.Clientset, namespace, podName strin
 	}
 
 	// Wait for pod deletion to complete
-	return WaitForPodDeletion(clientset, namespace, podName)
+	return WaitForRunPodDeletion(clientset, namespace, podName)
 }
 
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.

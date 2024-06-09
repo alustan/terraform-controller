@@ -71,7 +71,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
                     Args: []string{
                         "--dockerfile=/config/Dockerfile",
                         "--destination=" + imageName,
-                        "--context=/workspace/" + name,  
+                        "--context=/tmp/" + name,  
                     },
                     Env: []corev1.EnvVar{
                         {

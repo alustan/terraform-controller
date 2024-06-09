@@ -12,7 +12,7 @@ imagePullSecrets: []
 nameOverride: "terraform-controller-helm"
 fullnameOverride: "terraform-controller-helm"
 
-syncInterval: "10m"
+syncInterval: ""
 
 serviceAccount:
   # Specifies whether a service account should be created

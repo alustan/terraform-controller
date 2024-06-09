@@ -7,15 +7,11 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	
 	"k8s.io/client-go/kubernetes"
 )
 
-
-
-// checkExistingPods checks for existing pods with the specified label.
+// checkExistingBuildPods checks for existing running, pending, or container creating pods with the specified label.
 func checkExistingBuildPods(clientset *kubernetes.Clientset, namespace, labelSelector string) (bool, error) {
 	pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
 		LabelSelector: labelSelector,
@@ -24,24 +20,28 @@ func checkExistingBuildPods(clientset *kubernetes.Clientset, namespace, labelSel
 		return false, err
 	}
 
-	return len(pods.Items) > 0, nil
+	for _, pod := range pods.Items {
+		if pod.Status.Phase == corev1.PodRunning || pod.Status.Phase == corev1.PodPending {
+			return true, nil
+		}
+		for _, containerStatus := range pod.Status.ContainerStatuses {
+			if containerStatus.State.Waiting != nil && containerStatus.State.Waiting.Reason == "ContainerCreating" {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
-// CreateBuildPod creates a Kubernetes Pod to run a Kaniko build
+// CreateBuildPod creates a Kubernetes Pod to run a Kaniko build.
 func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) (string, error) {
 	err := EnsurePVC(clientset, namespace, pvcName)
-	if err != nil {
+	if (err != nil) {
 		log.Printf("Failed to ensure PVC: %v", err)
 		return "", err
 	}
 
-	// Generate a unique pod name using the current timestamp
-	timestamp := time.Now().Format("20060102150405")
-	podName := fmt.Sprintf("%s-docker-build-pod-%s", name, timestamp)
-	labelSelector := fmt.Sprintf("app-build=%s", name)
-	
-	// Generate a unique tag using the current timestamp
-	taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
+	labelSelector := fmt.Sprintf("appbuild=%s", name)
 
 	// Check for existing pods with the same label
 	exists, err := checkExistingBuildPods(clientset, namespace, labelSelector)
@@ -55,11 +55,18 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 		return "", fmt.Errorf("existing build pod already running")
 	}
 
+	// Generate a unique pod name using the current timestamp
+	timestamp := time.Now().Format("20060102150405")
+	podName := fmt.Sprintf("%s-docker-build-pod-%s", name, timestamp)
+
+	// Generate a unique tag using the current timestamp
+	taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
+
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
 			Labels: map[string]string{
-				"app": name,
+				"appbuild": name,
 			},
 			Annotations: map[string]string{
 				"kubectl.kubernetes.io/ttl": "3600", // TTL in seconds (1 hour)

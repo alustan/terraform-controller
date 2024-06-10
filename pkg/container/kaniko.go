@@ -60,8 +60,8 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 	podName := fmt.Sprintf("%s-docker-build-pod-%s", name, timestamp)
 
 	// Generate a unique tag using the current timestamp
-	// taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
-	taggedImageName := fmt.Sprintf("%s", imageName)
+	taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
+	// taggedImageName := fmt.Sprintf("%s", imageName)
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

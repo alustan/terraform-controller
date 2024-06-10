@@ -26,10 +26,8 @@ import (
 )
 
 const (
-	maxRetries = 5
-	// Wait for the build pod to complete
-	maxWaitTime = 20 * time.Minute
-	checkInterval = 60 * time.Second
+	maxRetries = 10
+	
 )
 
 

@@ -33,12 +33,13 @@ func checkExistingBuildPods(clientset *kubernetes.Clientset, namespace, labelSel
 	return false, nil
 }
 
+
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build.
-func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) (string, string, error){
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) (string, string, error) {
 	err := EnsurePVC(clientset, namespace, pvcName)
-	if (err != nil) {
+	if err != nil {
 		log.Printf("Failed to ensure PVC: %v", err)
-		return "", "",err
+		return "", "", err
 	}
 
 	labelSelector := fmt.Sprintf("appbuild=%s", name)
@@ -47,12 +48,12 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 	exists, err := checkExistingBuildPods(clientset, namespace, labelSelector)
 	if err != nil {
 		log.Printf("Error checking existing pods: %v", err)
-		return "","", err
+		return "", "", err
 	}
 
 	if exists {
 		log.Printf("Existing pods with label %s found, not creating new pod.", labelSelector)
-		return "", "",fmt.Errorf("existing build pod already running")
+		return "", "", fmt.Errorf("existing build pod already running")
 	}
 
 	// Generate a unique pod name using the current timestamp
@@ -61,8 +62,6 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 
 	// Generate a unique tag using the current timestamp
 	taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
-	// taggedImageName := fmt.Sprintf("%s", imageName)
-	hostPathType := corev1.HostPathDirectoryOrCreate
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -71,10 +70,25 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 				"appbuild": name,
 			},
 			Annotations: map[string]string{
-				"kubectl.kubernetes.io/ttl": "3600", // TTL in seconds (1 hour)
+				"kubectl.kubernetes.io/ttl": "1800", // TTL in seconds (30 mins)
 			},
 		},
 		Spec: corev1.PodSpec{
+			InitContainers: []corev1.Container{
+				{
+					Name:  "copy-repo",
+					Image: "busybox",
+					Command: []string{
+						"sh", "-c", fmt.Sprintf("cp -r %s/. /workspace/ && ls /workspace/", repoDir),
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "workspace",
+							MountPath: "/workspace",
+						},
+					},
+				},
+			},
 			Containers: []corev1.Container{
 				{
 					Name:  "kaniko",
@@ -131,10 +145,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 				{
 					Name: "workspace",
 					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: repoDir, // Host path to the cloned repository
-							Type: &hostPathType,
-						},
+						EmptyDir: &corev1.EmptyDirVolumeSource{},
 					},
 				},
 				{
@@ -167,7 +178,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 	_, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create Pod: %v", err)
-		return "","", err
+		return "", "", err
 	}
 
 	log.Printf("Created Pod: %s", podName)

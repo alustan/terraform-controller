@@ -3,6 +3,7 @@ package terraform
 import (
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -74,6 +75,22 @@ func CloneOrPullRepo(repoURL, branch, repoDir, sshKey string) error {
 			return err
 		}
 		log.Println("Repository pulled successfully.")
+	}
+
+	// Log the files in the cloned repository directory
+	log.Printf("Listing files in the directory: %s", repoDir)
+	err = filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			log.Printf("File: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		log.Printf("Failed to list files: %v", err)
+		return err
 	}
 
 	log.Println("CloneOrPullRepo completed successfully.")

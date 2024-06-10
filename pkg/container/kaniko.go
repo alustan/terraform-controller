@@ -62,6 +62,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 	// Generate a unique tag using the current timestamp
 	taggedImageName := fmt.Sprintf("%s:%s", imageName, timestamp)
 	// taggedImageName := fmt.Sprintf("%s", imageName)
+	hostPathType := corev1.HostPathDirectoryOrCreate
 
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
@@ -132,6 +133,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					VolumeSource: corev1.VolumeSource{
 						HostPath: &corev1.HostPathVolumeSource{
 							Path: repoDir, // Host path to the cloned repository
+							Type: &hostPathType,
 						},
 					},
 				},

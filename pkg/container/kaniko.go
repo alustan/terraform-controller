@@ -79,7 +79,11 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					Name:  "copy-repo",
 					Image: "busybox",
 					Command: []string{
-						"sh", "-c", fmt.Sprintf("cp -r %s/. /workspace/ && ls /workspace/", repoDir),
+						"sh",
+                        "-c",
+                        fmt.Sprintf("ls -la %s && ls -la /tmp", repoDir),
+						
+						// "sh", "-c", fmt.Sprintf("cp -r %s/. /workspace/ && ls /workspace/", repoDir),
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{

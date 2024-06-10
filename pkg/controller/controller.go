@@ -19,9 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-    
 
-	corev1 "k8s.io/api/core/v1"
 	dynclient "k8s.io/client-go/dynamic"
 	k8sclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -192,16 +190,12 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 		return c.errorResponse("creating Dockerfile ConfigMap", err)
 	}
 
-	taggedImageName,podName, err := c.buildAndTagImage(observed, configMapName, repoDir)
+	taggedImageName,_, err := c.buildAndTagImage(observed, configMapName, repoDir)
 	if err != nil {
 		return c.errorResponse("creating build job", err)
 	}
 
-	if err := c.waitForBuildPodCompletion(observed.Parent.Metadata.Namespace, podName); err != nil {
-		return c.errorResponse("waiting for build pod completion", err)
-	}
-
-	status := c.runTerraform(observed, scriptContent, taggedImageName, envVars)
+   status := c.runTerraform(observed, scriptContent, taggedImageName, envVars)
 	if err := kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status); err != nil {
 		return c.errorResponse("updating status", err)
 	}
@@ -282,33 +276,7 @@ func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoD
 	return container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, configMapName, imageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name, repoDir)
 }
 
-func (c *Controller) waitForBuildPodCompletion(namespace, name string) error {
-	log.Println("Waiting for build pod to complete...")
-	start := time.Now()
 
-	for {
-		pod, err := c.clientset.CoreV1().Pods(namespace).Get(context.Background(), fmt.Sprintf("%s-docker-build-pod", name), metav1.GetOptions{})
-		if err != nil {
-			return fmt.Errorf("error getting build pod status: %v", err)
-		}
-
-		log.Printf("Current pod status: %v\n", pod.Status.Phase)
-
-	
-
-		if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
-			log.Println("Build pod completed.")
-			return nil
-		}
-
-		if time.Since(start) > maxWaitTime {
-			return fmt.Errorf("timeout waiting for build pod to complete")
-		}
-
-		log.Println("Build pod still running. Waiting...")
-		time.Sleep(checkInterval)
-	}
-}
 
 
 func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedImageName string, envVars map[string]string) map[string]interface{} {

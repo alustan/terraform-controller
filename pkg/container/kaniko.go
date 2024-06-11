@@ -33,15 +33,8 @@ func checkExistingBuildPods(clientset *kubernetes.Clientset, namespace, labelSel
 	return false, nil
 }
 
-
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build.
-func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, pvcName, dockerSecretName, repoDir string) (string, string, error) {
-	err := EnsurePVC(clientset, namespace, pvcName)
-	if err != nil {
-		log.Printf("Failed to ensure PVC: %v", err)
-		return "", "", err
-	}
-
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName, repoDir string) (string, string, error) {
 	labelSelector := fmt.Sprintf("appbuild=%s", name)
 
 	// Check for existing pods with the same label
@@ -121,10 +114,6 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 							Name:      "docker-credentials",
 							MountPath: "/root/.docker",
 						},
-						{
-							Name:      "kaniko-logs",
-							MountPath: "/logs",
-						},
 					},
 				},
 			},
@@ -163,14 +152,6 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 									Path: "config.json",
 								},
 							},
-						},
-					},
-				},
-				{
-					Name: "kaniko-logs",
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: pvcName,
 						},
 					},
 				},

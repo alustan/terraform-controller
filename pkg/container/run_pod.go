@@ -34,13 +34,7 @@ func checkExistingRunPods(clientset *kubernetes.Clientset, namespace, labelSelec
 }
 
 // CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVars map[string]string, scriptContent, taggedImageName, pvcName, imagePullSecretName string) error {
-	err := EnsurePVC(clientset, namespace, pvcName)
-	if err != nil {
-		log.Printf("Failed to ensure PVC: %v", err)
-		return err
-	}
-
+func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVars map[string]string, scriptContent, taggedImageName, imagePullSecretName string) error {
 	labelSelector := fmt.Sprintf("apprun=%s", name)
 
 	// Check for existing pods with the same label
@@ -96,7 +90,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 					Env: env,
 					VolumeMounts: []v1.VolumeMount{
 						{
-							Name:      "terraform-pv",
+							Name:      "workspace",
 							MountPath: "/workspace",
 						},
 					},
@@ -105,11 +99,9 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 			RestartPolicy: v1.RestartPolicyNever,
 			Volumes: []v1.Volume{
 				{
-					Name: "terraform-pv",
+					Name: "workspace",
 					VolumeSource: v1.VolumeSource{
-						PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
-							ClaimName: pvcName,
-						},
+						EmptyDir: &v1.EmptyDirVolumeSource{},
 					},
 				},
 			},

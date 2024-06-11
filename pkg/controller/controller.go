@@ -269,20 +269,20 @@ func (c *Controller) setupBackend(backend map[string]string) (string, bool, erro
 
 func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir string) (string,string, error) {
 	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
-	pvcName := fmt.Sprintf("%s-terraform-pvc", observed.Parent.Metadata.Name)
+	
 
-	return container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, configMapName, imageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name, repoDir)
+	return container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name, repoDir)
 }
 
 
 
 
 func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedImageName string, envVars map[string]string) map[string]interface{} {
-	pvcName := fmt.Sprintf("%s-terraform-pvc", observed.Parent.Metadata.Name)
+
 
 	var terraformErr error
 	for i := 0; i < maxRetries; i++ {
-		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, pvcName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
 		if terraformErr == nil {
 			break
 		}

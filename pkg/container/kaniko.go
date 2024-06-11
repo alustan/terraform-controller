@@ -79,13 +79,13 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					Name:  "copy-repo",
 					Image: "busybox",
 					Command: []string{
-						"sh",
-                        "-c",
-                        fmt.Sprintf("ls -la %s && ls -la /tmp", repoDir),
-						
-						// "sh", "-c", fmt.Sprintf("cp -r %s/. /workspace/ && ls /workspace/", repoDir),
+						"sh", "-c", fmt.Sprintf("cp -r %s/. /workspace/ && ls /workspace/", repoDir),
 					},
 					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "host-repo",
+							MountPath: repoDir,
+						},
 						{
 							Name:      "workspace",
 							MountPath: "/workspace",
@@ -171,6 +171,14 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					VolumeSource: corev1.VolumeSource{
 						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 							ClaimName: pvcName,
+						},
+					},
+				},
+				{
+					Name: "host-repo",
+					VolumeSource: corev1.VolumeSource{
+						HostPath: &corev1.HostPathVolumeSource{
+							Path: repoDir,
 						},
 					},
 				},

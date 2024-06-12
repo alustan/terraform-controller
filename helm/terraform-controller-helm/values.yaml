@@ -6,18 +6,17 @@ image:
   repository: alustan/terraform-controller
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.23.0"
+  tag: "v0.44.0"
 
 imagePullSecrets: []
 nameOverride: "terraform-controller-helm"
 fullnameOverride: "terraform-controller-helm"
 
-syncInterval: ""
+syncInterval: "60m"
 
 serviceAccount:
   # Specifies whether a service account should be created
-  create: false
-  # Automatically mount a ServiceAccount's API credentials?
+                                                               # Automatically mount a ServiceAccount's API credentials?
   automount: true
   # Annotations to add to the service account
   annotations: 
@@ -89,17 +88,18 @@ autoscaling:
   # targetMemoryUtilizationPercentage: 80
 
 # Additional volumes on the output Deployment definition.
-volumes: []
-# - name: foo
-#   secret:
-#     secretName: mysecret
-#     optional: false
+volumes: 
+- name: repodir
+  persistentVolumeClaim:
+    claimName: terraform-controller-pvc
+  storageClassName: ""
+   
 
 # Additional volumeMounts on the output Deployment definition.
-volumeMounts: []
-# - name: foo
-#   mountPath: "/etc/foo"
-#   readOnly: true
+volumeMounts: 
+- name: repodir
+  mountPath: "/tmp"
+  
 
 nodeSelector: {}
 

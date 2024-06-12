@@ -33,9 +33,11 @@ func checkExistingBuildPods(clientset *kubernetes.Clientset, namespace, labelSel
 	return false, nil
 }
 
+
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build.
 func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName, repoDir string) (string, string, error) {
-	labelSelector := fmt.Sprintf("appbuild=%s", name)
+	
+   labelSelector := fmt.Sprintf("appbuild=%s", name)
 
 	// Check for existing pods with the same label
 	exists, err := checkExistingBuildPods(clientset, namespace, labelSelector)
@@ -114,6 +116,10 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 							Name:      "docker-credentials",
 							MountPath: "/root/.docker",
 						},
+						{
+							Name:      "kaniko-logs",
+							MountPath: "/logs",
+						},
 					},
 				},
 			},
@@ -158,11 +164,12 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 				{
 					Name: "host-repo",
 					VolumeSource: corev1.VolumeSource{
-						HostPath: &corev1.HostPathVolumeSource{
-							Path: repoDir,
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "terraform-controller-pvc",
 						},
 					},
 				},
+				
 			},
 		},
 	}

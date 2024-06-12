@@ -173,12 +173,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 		return c.errorResponse("preparing repository", err)
 	}
 
-	err = terraform.CloneOrPullRepo(observed.Parent.Spec.GitRepo.URL, observed.Parent.Spec.GitRepo.Branch, repoDir, sshKey)
-	if err != nil {
-		return c.errorResponse("cloning Git repository", err)
-	}
-
-	dockerfileAdditions, providerExists, err := c.setupBackend(observed.Parent.Spec.Backend)
+   dockerfileAdditions, providerExists, err := c.setupBackend(observed.Parent.Spec.Backend)
 	if err != nil {
 		return c.errorResponse("setting up backend", err)
 	}
@@ -188,7 +183,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 		return c.errorResponse("creating Dockerfile ConfigMap", err)
 	}
 
-	taggedImageName,_, err := c.buildAndTagImage(observed, configMapName, repoDir)
+	taggedImageName,_, err := c.buildAndTagImage(observed, configMapName, repoDir,sshKey)
 	if err != nil {
 		return c.errorResponse("creating build job", err)
 	}
@@ -267,11 +262,20 @@ func (c *Controller) setupBackend(backend map[string]string) (string, bool, erro
 	return provider.GetDockerfileAdditions(), true, nil
 }
 
-func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir string) (string,string, error) {
+func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir, sshKey string) (string,string, error) {
 	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
 	
 
-	return container.CreateBuildPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, configMapName, imageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name, repoDir)
+	return container.CreateBuildPod(c.clientset, 
+		  observed.Parent.Metadata.Name,
+		  observed.Parent.Metadata.Namespace,
+		  configMapName, 
+		  imageName, 
+		  observed.Parent.Spec.ContainerRegistry.SecretRef.Name,
+		  repoDir,
+		  observed.Parent.Spec.GitRepo.URL,
+		  observed.Parent.Spec.GitRepo.Branch,
+		  sshKey)
 }
 
 

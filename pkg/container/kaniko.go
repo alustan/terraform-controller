@@ -33,11 +33,17 @@ func checkExistingBuildPods(clientset *kubernetes.Clientset, namespace, labelSel
 	return false, nil
 }
 
-
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build.
-func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName, repoDir string) (string, string, error) {
-	
-   labelSelector := fmt.Sprintf("appbuild=%s", name)
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName, repoDir, gitRepo, branch, sshKey string) (string, string, error) {
+
+	labelSelector := fmt.Sprintf("appbuild=%s", name)
+	pvcName := fmt.Sprintf("pvc-%s", name)
+
+	err := EnsurePVC(clientset, namespace, pvcName)
+	if err != nil {
+		log.Printf("Error creating PVC: %v", err)
+		return "", "", err
+	}
 
 	// Check for existing pods with the same label
 	exists, err := checkExistingBuildPods(clientset, namespace, labelSelector)
@@ -71,19 +77,30 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 		Spec: corev1.PodSpec{
 			InitContainers: []corev1.Container{
 				{
-					Name:  "copy-repo",
-					Image: "busybox",
-					Command: []string{
-						"sh", "-c", fmt.Sprintf("cp -r %s/. /workspace/ && ls /workspace/", repoDir),
+					Name:  "git-clone",
+					Image: "git-clone:v0.1.0",
+					Env: []corev1.EnvVar{
+						{
+							Name:  "REPO_URL",
+							Value: gitRepo,
+						},
+						{
+							Name:  "BRANCH",
+							Value: branch,
+						},
+						{
+							Name:  "REPO_DIR",
+							Value: repoDir,
+						},
+						{
+							Name:  "SSH_KEY",
+							Value: sshKey,
+						},
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
-							Name:      "host-repo",
-							MountPath: repoDir,
-						},
-						{
 							Name:      "workspace",
-							MountPath: "/workspace",
+							MountPath: repoDir,
 						},
 					},
 				},
@@ -95,7 +112,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					Args: []string{
 						"--dockerfile=/config/Dockerfile",
 						"--destination=" + taggedImageName,
-						"--context=/workspace",
+						"--context=" + repoDir,
 					},
 					Env: []corev1.EnvVar{
 						{
@@ -110,15 +127,11 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 						},
 						{
 							Name:      "workspace",
-							MountPath: "/workspace",
+							MountPath: repoDir,
 						},
 						{
 							Name:      "docker-credentials",
 							MountPath: "/root/.docker",
-						},
-						{
-							Name:      "kaniko-logs",
-							MountPath: "/logs",
 						},
 					},
 				},
@@ -144,7 +157,9 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 				{
 					Name: "workspace",
 					VolumeSource: corev1.VolumeSource{
-						EmptyDir: &corev1.EmptyDirVolumeSource{},
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: pvcName,
+						},
 					},
 				},
 				{
@@ -161,15 +176,6 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 						},
 					},
 				},
-				{
-					Name: "host-repo",
-					VolumeSource: corev1.VolumeSource{
-						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-							ClaimName: "terraform-controller-pvc",
-						},
-					},
-				},
-				
 			},
 		},
 	}

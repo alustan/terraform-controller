@@ -153,6 +153,7 @@ spec:
   scripts:
     apply: 
      inline: |
+       terraform init
        terraform apply -auto-approve
     destroy: 
      inline: |

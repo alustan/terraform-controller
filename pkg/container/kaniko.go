@@ -77,8 +77,21 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 		Spec: corev1.PodSpec{
 			InitContainers: []corev1.Container{
 				{
+					Name:  "setup-repo-dir",
+					Image: "busybox",
+					Command: []string{
+						"sh", "-c", fmt.Sprintf("mkdir -p %s && chmod 777 %s", repoDir, repoDir),
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "workspace",
+							MountPath: repoDir,
+						},
+					},
+				},
+				{
 					Name:  "git-clone",
-					Image: "docker.io/alustan/git-clone:0.2.0",
+					Image: "docker.io/alustan/git-clone:0.3.0",
 					Env: []corev1.EnvVar{
 						{
 							Name:  "REPO_URL",

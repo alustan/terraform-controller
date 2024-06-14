@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
-	"controller/pkg/util"
-	"controller/pkg/controller" 
-	_ "controller/plugin/aws"
+	"github.com/alustan/terraform-controller/pkg/util"
+	"github.com/alustan/terraform-controller/pkg/controller" 
+	_ "github.com/alustan/terraform-controller/plugin/aws"
 )
 
 // Variables to be set by ldflags

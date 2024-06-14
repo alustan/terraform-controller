@@ -148,93 +148,28 @@ packaging of the controller.
 apiVersion: alustan.io/v1alpha1
 kind: Terraform
 metadata:
-  name: example-terraformconfig
+  name: terraformconfig
   namespace: default
 spec:
   variables:
-    TF_VAR_var1: value1
-    TF_VAR_var2: value2
+    TF_VAR_provision_cluster: true
+    TF_VAR_provision_db: false
+    TF_VAR_vpc_cidr: "10.1.0.0/16"
   backend:
     provider: aws
     s3: s3-store
     dynamoDB: db-table
     region: us-east-1
   scripts:
-    apply: 
-     inline: |
-       terraform apply -auto-approve
-    destroy: 
-     inline: |
-        terraform destroy -auto-approve
+    deploy: deploy.sh
+    destroy: destroy.sh
   gitRepo:
-    url: git@github.com:example/terraform-repo/terraform
-    branch: main
-    sshKeySecret:
-      name: my-ssh-secret
-      key: ssh-privatekey
-  containerRegistry:
-    imageName: docker.io/alustan/terrform (image name to be built and push by the controller)
-    secretRef:
-      name: my-dockerhub-secret
-      key: dockerhub-cred
-
-# status:
-#   state: "Pending"
-#   message: "Awaiting processing"
-```
-
-```yaml
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: terraform-scripts
-data:
-  apply-script.sh: |
-    #!/bin/bash
-    echo "This is the apply script"
-  destroy-script.sh: |
-    #!/bin/bash
-    echo "This is the destroy script"
-
----
-
-apiVersion: alustan.io/v1alpha1
-kind: Terraform
-metadata:
-  name: example-terraformconfig
-  namespace: default
-spec:
-  variables:
-    TF_VAR_var1: value1
-    TF_VAR_var2: value2
-  backend:
-    provider: aws
-    s3: s3-store
-    dynamoDB: db-table
-    region: us-east-1
-    
-  scripts:
-    apply: 
-     configMapRef:
-      name: terraform-scripts
-      key: apply-script.sh
-    destroy:
-     configMapRef:
-      name: terraform-scripts
-      key: destroy-script.sh
-   
-  gitRepo:
-    url: https://github.com/example/terraform-repo/terraform
+    url: https://github.com/example/terraform-repo
     branch: main
   containerRegistry:
-    imageName: docker.io/alustan/terrform (image name to be built and push by the controller)
-    secretRef:
-      name: my-dockerhub-secret
-      key: dockerhub-cred
-
-  
-# status:
+    imageName: docker.io/alustan/terraform-controller
+     
+#  status:
 #   state: "Pending"
 #   message: "Awaiting processing"
 ```

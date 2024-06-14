@@ -1,4 +1,4 @@
-module controller
+module github.com/alustan/terraform-controller
 
 go 1.22.2
 

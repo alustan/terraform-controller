@@ -14,6 +14,22 @@ fullnameOverride: "terraform-controller-helm"
 
 syncInterval: "60m"
 
+gitOrg:
+  url: https://github.com/alustan
+  gitSSHSecret: ""
+
+containerRegistry:
+  containerRegistrySecret: ""
+
+
+
+# Use Kubernetes Secrets
+useSecrets: false
+containerRegistrySecretName: ""
+containerRegistrySecretKey: ""
+gitSSHSecretName: ""
+gitSSHSecretKey: ""
+
 serviceAccount:
   # Specifies whether a service account should be created
                                                                # Automatically mount a ServiceAccount's API credentials?

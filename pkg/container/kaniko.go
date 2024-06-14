@@ -110,7 +110,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					Name:  "kaniko",
 					Image: "gcr.io/kaniko-project/executor:v1.23.1-debug",
 					Args: []string{
-						"--dockerfile=/config/Dockerfile",
+						"--dockerfile=" + repoDir + "/Dockerfile",
 						"--destination=" + taggedImageName,
 						"--context=" + repoDir,
 					},
@@ -122,16 +122,17 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
-							Name:      "dockerfile-config",
-							MountPath: "/config",
-						},
-						{
 							Name:      "workspace",
 							MountPath: "/tmp",
 						},
 						{
 							Name:      "docker-credentials",
 							MountPath: "/root/.docker",
+						},
+						{
+							Name:      "dockerfile-config",
+							MountPath: repoDir + "/Dockerfile",
+							SubPath:   "Dockerfile",
 						},
 					},
 				},

@@ -64,8 +64,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 		log.Printf("Setting environment variable %s=%s", key, value)
 	}
 
-	// Write the script content to a file inside the container
-	scriptPath := "/workspace/script.sh"
+	
 	pod := &v1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: podName,
@@ -85,7 +84,7 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace string, envVa
 					Command: []string{
 						"/bin/bash",
 						"-c",
-						fmt.Sprintf("echo '%s' > %s && chmod +x %s && %s", scriptContent, scriptPath, scriptPath, scriptPath),
+						fmt.Sprintf("chmod +x %s && exec %s", scriptContent, scriptContent),
 					},
 					Env: env,
 					VolumeMounts: []v1.VolumeMount{

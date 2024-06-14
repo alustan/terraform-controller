@@ -10,7 +10,7 @@ import (
     "github.com/aws/aws-sdk-go/service/s3"
     "github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
     "github.com/aws/aws-sdk-go/service/s3/s3iface"
-    "controller/plugin"
+    "github.com/alustan/terraform-controller/plugin"
 )
 
 type AWSProvider struct{}

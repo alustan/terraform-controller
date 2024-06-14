@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 	"time"
-	"controller/pkg/terraform"
+	"github.com/alustan/terraform-controller/pkg/terraform"
 )
 
 func main() {

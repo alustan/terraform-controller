@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"time"
 	"fmt"
+	"os"
 
 	"github.com/gin-gonic/gin"
-	"controller/pkg/container"
-	"controller/pkg/kubernetes"
-	"controller/pkg/terraform"
-	"controller/pkg/util"
-	"controller/plugin"
+	"github.com/alustan/terraform-controller/pkg/container"
+	"github.com/alustan/terraform-controller/pkg/kubernetes"
+    "github.com/alustan/terraform-controller/pkg/util"
+	"github.com/alustan/terraform-controller/plugin"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -27,10 +27,7 @@ import (
 
 const (
 	maxRetries = 10
-	
 )
-
-
 
 type Controller struct {
 	clientset *k8sclient.Clientset
@@ -43,42 +40,21 @@ type TerraformConfigSpec struct {
 	Scripts          Scripts           `json:"scripts"`
 	GitRepo          GitRepo           `json:"gitRepo"`
 	ContainerRegistry ContainerRegistry `json:"containerRegistry"`
+	
 }
 
 type Scripts struct {
-	Apply   Script `json:"apply"`
-	Destroy Script `json:"destroy"`
-}
-
-type Script struct {
-	Inline       string       `json:"inline"`
-	ConfigMapRef ConfigMapRef `json:"configMapRef"`
-}
-
-type ConfigMapRef struct {
-	Name string `json:"name"`
-	Key  string `json:"key"`
+	Deploy   string `json:"deploy"`
+	Destroy string `json:"destroy"`
 }
 
 type GitRepo struct {
 	URL          string       `json:"url"`
 	Branch       string       `json:"branch"`
-	SSHKeySecret SSHKeySecret `json:"sshKeySecret"`
 }
 
 type ContainerRegistry struct {
 	ImageName string    `json:"imageName"`
-	SecretRef SecretRef `json:"secretRef"`
-}
-
-type SecretRef struct {
-	Name string `json:"name"`
-	Key  string `json:"key"`
-}
-
-type SSHKeySecret struct {
-	Name string `json:"name"`
-	Key  string `json:"key"`
 }
 
 type ParentResource struct {
@@ -146,54 +122,68 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 	envVars := c.extractEnvVars(observed.Parent.Spec.Variables)
 	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
 
-	script, err := c.getScript(observed.Parent.Spec.Scripts.Apply)
-	if err != nil {
-		return c.errorResponse("apply", err)
-	}
-
-	scriptContent, err := terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
-	if err != nil {
-		return c.errorResponse("extracting apply script", err)
+	scriptContent := observed.Parent.Spec.Scripts.Deploy
+	if scriptContent == "" {
+		status := c.errorResponse("executing deploy script", fmt.Errorf("deploy script is missing"))
+		c.updateStatus(observed, status)
+		return status
 	}
 
 	if observed.Finalizing {
-		script, err = c.getScript(observed.Parent.Spec.Scripts.Destroy)
-		if err != nil {
-			return c.errorResponse("destroy", err)
-		}
-
-		scriptContent, err = terraform.ExtractScriptContent(c.clientset, observed.Parent.Metadata.Namespace, script)
-		if err != nil {
-			return c.errorResponse("extracting destroy script", err)
+		scriptContent = observed.Parent.Spec.Scripts.Destroy
+		if scriptContent == "" {
+			status := c.errorResponse("executing destroy script", fmt.Errorf("destroy script is missing"))
+			c.updateStatus(observed, status)
+			return status
 		}
 	}
 
-	repoDir, sshKey, err := c.prepareRepo(observed.Parent)
-	if err != nil {
-		return c.errorResponse("preparing repository", err)
-	}
+	repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
+	sshKey := os.Getenv("GIT_SSH_SECRET")
 
-   dockerfileAdditions, providerExists, err := c.setupBackend(observed.Parent.Spec.Backend)
+	dockerfileAdditions, providerExists, err := c.setupBackend(observed.Parent.Spec.Backend)
 	if err != nil {
-		return c.errorResponse("setting up backend", err)
+		status := c.errorResponse("setting up backend", err)
+		c.updateStatus(observed, status)
+		return status
 	}
 
 	configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, dockerfileAdditions, providerExists)
 	if err != nil {
-		return c.errorResponse("creating Dockerfile ConfigMap", err)
+		status := c.errorResponse("creating Dockerfile ConfigMap", err)
+		c.updateStatus(observed, status)
+		return status
 	}
 
-	taggedImageName,_, err := c.buildAndTagImage(observed, configMapName, repoDir,sshKey)
+	encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
+	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
+	err = container.CreateDockerConfigSecret(c.clientset, secretName, observed.Parent.Metadata.Namespace, encodedDockerConfigJSON)
 	if err != nil {
-		return c.errorResponse("creating build job", err)
+		status := c.errorResponse("creating Docker config secret", err)
+		c.updateStatus(observed, status)
+		return status
 	}
 
-   status := c.runTerraform(observed, scriptContent, taggedImageName, envVars)
-	if err := kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status); err != nil {
-		return c.errorResponse("updating status", err)
+	taggedImageName, _, err := c.buildAndTagImage(observed, configMapName, repoDir, sshKey, secretName)
+	if err != nil {
+		status := c.errorResponse("creating build job", err)
+		c.updateStatus(observed, status)
+		return status
 	}
+
+	status := c.runTerraform(observed, scriptContent, taggedImageName, secretName, envVars)
+	
+    c.updateStatus(observed, status)
 
 	return status
+}
+
+
+func (c *Controller) updateStatus(observed SyncRequest, status map[string]interface{}) {
+	err := kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
+	if err != nil {
+		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, err)
+	}
 }
 
 func (c *Controller) extractEnvVars(variables map[string]string) map[string]string {
@@ -203,40 +193,6 @@ func (c *Controller) extractEnvVars(variables map[string]string) map[string]stri
 	return util.ExtractEnvVars(variables)
 }
 
-func (c *Controller) getScript(scriptSpec Script) (map[string]interface{}, error) {
-	if scriptSpec.Inline != "" {
-		log.Printf("Using inline script: %s", scriptSpec.Inline)
-		return map[string]interface{}{
-			"inline": scriptSpec.Inline,
-		}, nil
-	}
-	if scriptSpec.ConfigMapRef.Name != "" && scriptSpec.ConfigMapRef.Key != "" {
-		log.Printf("Using ConfigMapRef with name: %s and key: %s", scriptSpec.ConfigMapRef.Name, scriptSpec.ConfigMapRef.Key)
-		return map[string]interface{}{
-			"configMapRef": map[string]interface{}{
-				"name": scriptSpec.ConfigMapRef.Name,
-				"key":  scriptSpec.ConfigMapRef.Key,
-			},
-		}, nil
-	}
-	return nil, fmt.Errorf("no script provided for operation")
-}
-
-func (c *Controller) prepareRepo(parent ParentResource) (string, string, error) {
-	repoDir := filepath.Join("/tmp", parent.Metadata.Name)
-	gitRepo := parent.Spec.GitRepo
-	var sshKey string
-
-	if gitRepo.URL != "" && gitRepo.SSHKeySecret.Name != "" && gitRepo.SSHKeySecret.Key != "" {
-		var err error
-		sshKey, err = util.GetDataFromSecret(c.clientset, parent.Metadata.Namespace, gitRepo.SSHKeySecret.Name, gitRepo.SSHKeySecret.Key)
-		if err != nil {
-			return "", "", fmt.Errorf("failed to get SSH key from secret: %v", err)
-		}
-	}
-
-	return repoDir, sshKey, nil
-}
 
 func (c *Controller) setupBackend(backend map[string]string) (string, bool, error) {
 	if backend == nil || len(backend) == 0 {
@@ -262,7 +218,7 @@ func (c *Controller) setupBackend(backend map[string]string) (string, bool, erro
 	return provider.GetDockerfileAdditions(), true, nil
 }
 
-func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir, sshKey string) (string,string, error) {
+func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir, sshKey,secretName string) (string,string, error) {
 	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
 	
 
@@ -271,7 +227,7 @@ func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoD
 		  observed.Parent.Metadata.Namespace,
 		  configMapName, 
 		  imageName, 
-		  observed.Parent.Spec.ContainerRegistry.SecretRef.Name,
+		  secretName,
 		  repoDir,
 		  observed.Parent.Spec.GitRepo.URL,
 		  observed.Parent.Spec.GitRepo.Branch,
@@ -281,12 +237,12 @@ func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoD
 
 
 
-func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedImageName string, envVars map[string]string) map[string]interface{} {
+func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedImageName, secretName string, envVars map[string]string) map[string]interface{} {
 
 
 	var terraformErr error
 	for i := 0; i < maxRetries; i++ {
-		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, observed.Parent.Spec.ContainerRegistry.SecretRef.Name)
+		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, secretName)
 		if terraformErr == nil {
 			break
 		}
@@ -309,7 +265,7 @@ func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedIma
 func (c *Controller) errorResponse(action string, err error) map[string]interface{} {
 	log.Printf("Error %s: %v", action, err)
 	return map[string]interface{}{
-		"status":  "error",
+		"state":  "error",
 		"message": fmt.Sprintf("Error %s: %v", action, err),
 	}
 }

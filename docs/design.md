@@ -152,9 +152,13 @@ spec:
     dynamoDB: db-table
     region: us-east-1
   scripts:
-    apply: deploy.sh
+    deploy: deploy.sh
     destroy: destroy.sh
-     
+  gitRepo:
+    url: https://github.com/example/terraform-repo
+    branch: main
+  containerRegistry:
+    imageName: docker.io/alustan/terraform-controller
 #  status:
 #   state: "Pending"
 #   message: "Awaiting processing"

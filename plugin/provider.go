@@ -6,7 +6,6 @@ import (
 )
 
 type BackendProvider interface {
-    SetupBackend(map[string]string) error
     GetDockerfileAdditions() string
 }
 

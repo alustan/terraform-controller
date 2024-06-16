@@ -5,15 +5,12 @@ description: A Helm chart for Terraform Controller
 
 type: application
 
-version: 0.44.0
+version: 0.52.0
 
 
-appVersion: "0.44.0"
+appVersion: "0.52.0"
 
-dependencies:
-- name: metacontroller-helm
-  version: "4.11.14"
-  repository: "file://charts/metacontroller-helm"
+
 
   
    

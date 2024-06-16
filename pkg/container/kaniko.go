@@ -34,17 +34,10 @@ func checkExistingBuildPods(clientset *kubernetes.Clientset, namespace, labelSel
 }
 
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build.
-func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName, repoDir, gitRepo, branch, sshKey string) (string, string, error) {
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName, repoDir, gitRepo, branch, sshKey,pvcName string) (string, string, error) {
 
 	labelSelector := fmt.Sprintf("appbuild=%s", name)
-	pvcName := fmt.Sprintf("pvc-%s", name)
-
-	err := EnsurePVC(clientset, namespace, pvcName)
-	if err != nil {
-		log.Printf("Error creating PVC: %v", err)
-		return "", "", err
-	}
-
+	
 	// Check for existing pods with the same label
 	exists, err := checkExistingBuildPods(clientset, namespace, labelSelector)
 	if err != nil {

@@ -3,17 +3,17 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
-	"fmt"
-	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/alustan/terraform-controller/pkg/container"
 	"github.com/alustan/terraform-controller/pkg/kubernetes"
-    "github.com/alustan/terraform-controller/pkg/util"
+	"github.com/alustan/terraform-controller/pkg/util"
 	"github.com/alustan/terraform-controller/plugin"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,34 +35,32 @@ type Controller struct {
 }
 
 type TerraformConfigSpec struct {
-	Variables        map[string]string `json:"variables"`
-	Backend          map[string]string `json:"backend"`
-	Scripts          Scripts           `json:"scripts"`
-	GitRepo          GitRepo           `json:"gitRepo"`
+	Provider  string            `json:"provider"`
+	Variables map[string]string `json:"variables"`
+	Scripts   Scripts           `json:"scripts"`
+	GitRepo   GitRepo           `json:"gitRepo"`
 	ContainerRegistry ContainerRegistry `json:"containerRegistry"`
-	
 }
 
 type Scripts struct {
-	Deploy   string `json:"deploy"`
+	Deploy  string `json:"deploy"`
 	Destroy string `json:"destroy"`
 }
 
 type GitRepo struct {
-	URL          string       `json:"url"`
-	Branch       string       `json:"branch"`
+	URL    string `json:"url"`
+	Branch string `json:"branch"`
 }
 
 type ContainerRegistry struct {
-	ImageName string    `json:"imageName"`
+	ImageName string `json:"imageName"`
 }
 
 type ParentResource struct {
-	ApiVersion string                 `json:"apiVersion"`
-	Kind       string                 `json:"kind"`
-	Metadata   metav1.ObjectMeta      `json:"metadata"`
-	Spec       TerraformConfigSpec    `json:"spec"`
-	Status     map[string]interface{} `json:"status"`
+	ApiVersion string            `json:"apiVersion"`
+	Kind       string            `json:"kind"`
+	Metadata   metav1.ObjectMeta `json:"metadata"`
+	Spec       TerraformConfigSpec `json:"spec"`
 }
 
 type SyncRequest struct {
@@ -96,7 +94,6 @@ func NewInClusterController() *Controller {
 	return NewController(clientset, dynClient)
 }
 
-
 func (c *Controller) ServeHTTP(r *gin.Context) {
 	var observed SyncRequest
 	err := json.NewDecoder(r.Request.Body).Decode(&observed)
@@ -115,8 +112,6 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 	r.Writer.Header().Set("Content-Type", "application/json")
 	r.JSON(http.StatusOK, gin.H{"body": response})
 }
-
-
 
 func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interface{} {
 	envVars := c.extractEnvVars(observed.Parent.Spec.Variables)
@@ -141,7 +136,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 	repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
 	sshKey := os.Getenv("GIT_SSH_SECRET")
 
-	dockerfileAdditions, providerExists, err := c.setupBackend(observed.Parent.Spec.Backend)
+	dockerfileAdditions, providerExists, err := c.setupProvider(observed.Parent.Spec.Provider)
 	if err != nil {
 		status := c.errorResponse("setting up backend", err)
 		c.updateStatus(observed, status)
@@ -164,7 +159,16 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 		return status
 	}
 
-	taggedImageName, _, err := c.buildAndTagImage(observed, configMapName, repoDir, sshKey, secretName)
+	pvcName := fmt.Sprintf("pvc-%s", observed.Parent.Metadata.Name)
+
+	err = container.EnsurePVC(c.clientset, observed.Parent.Metadata.Namespace, pvcName)
+	if err != nil {
+		status := c.errorResponse("creating PVC", err)
+		c.updateStatus(observed, status)
+		return status
+	}
+
+	taggedImageName, _, err := c.buildAndTagImage(observed, configMapName, repoDir, sshKey, secretName, pvcName)
 	if err != nil {
 		status := c.errorResponse("creating build job", err)
 		c.updateStatus(observed, status)
@@ -172,12 +176,11 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 	}
 
 	status := c.runTerraform(observed, scriptContent, taggedImageName, secretName, envVars)
-	
-    c.updateStatus(observed, status)
+
+	c.updateStatus(observed, status)
 
 	return status
 }
-
 
 func (c *Controller) updateStatus(observed SyncRequest, status map[string]interface{}) {
 	err := kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
@@ -193,52 +196,32 @@ func (c *Controller) extractEnvVars(variables map[string]string) map[string]stri
 	return util.ExtractEnvVars(variables)
 }
 
-
-func (c *Controller) setupBackend(backend map[string]string) (string, bool, error) {
-	if backend == nil || len(backend) == 0 {
-		log.Println("No backend provided, continuing without backend setup")
-		return "", false, nil
-	}
-
-	providerType, providerExists := backend["provider"]
-	if !providerExists || providerType == "" {
-		log.Println("Backend provided without specifying provider, continuing without backend setup")
-		return "", false, nil
-	}
-
+func (c *Controller) setupProvider(providerType string) (string, bool, error) {
 	provider, err := plugin.GetProvider(providerType)
 	if err != nil {
 		return "", false, fmt.Errorf("error getting provider: %v", err)
 	}
 
-	if err := provider.SetupBackend(backend); err != nil {
-		return "", false, fmt.Errorf("error setting up %s backend: %v", providerType, err)
-	}
-
 	return provider.GetDockerfileAdditions(), true, nil
 }
 
-func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir, sshKey,secretName string) (string,string, error) {
+func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir, sshKey, secretName, pvcName string) (string, string, error) {
 	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
-	
 
-	return container.CreateBuildPod(c.clientset, 
-		  observed.Parent.Metadata.Name,
-		  observed.Parent.Metadata.Namespace,
-		  configMapName, 
-		  imageName, 
-		  secretName,
-		  repoDir,
-		  observed.Parent.Spec.GitRepo.URL,
-		  observed.Parent.Spec.GitRepo.Branch,
-		  sshKey)
+	return container.CreateBuildPod(c.clientset,
+		observed.Parent.Metadata.Name,
+		observed.Parent.Metadata.Namespace,
+		configMapName,
+		imageName,
+		secretName,
+		repoDir,
+		observed.Parent.Spec.GitRepo.URL,
+		observed.Parent.Spec.GitRepo.Branch,
+		sshKey,
+		pvcName)
 }
 
-
-
-
 func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedImageName, secretName string, envVars map[string]string) map[string]interface{} {
-
 
 	var terraformErr error
 	for i := 0; i < maxRetries; i++ {
@@ -265,11 +248,10 @@ func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedIma
 func (c *Controller) errorResponse(action string, err error) map[string]interface{} {
 	log.Printf("Error %s: %v", action, err)
 	return map[string]interface{}{
-		"state":  "error",
+		"state":   "error",
 		"message": fmt.Sprintf("Error %s: %v", action, err),
 	}
 }
-
 
 func (c *Controller) Reconcile(syncInterval time.Duration) {
 	for {

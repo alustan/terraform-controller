@@ -4,8 +4,8 @@ metadata:
   name: terraform-manager-binding
 subjects:
 - kind: ServiceAccount
-  name: default
-  namespace: metacontroller
+  name: {{- default "default" .Values.serviceAccount.name }}
+  namespace: alustan
 roleRef:
   kind: ClusterRole
   name: terraform-manager

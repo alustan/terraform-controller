@@ -31,6 +31,7 @@ helm install my-terraform-controller-helm oci://registry-1.docker.io/alustan/ter
 ```
 
 > - metacontroller is required to be running in the cluster before installing  `terraform-controller-helm `
+
  ```sh
 helm install my-metacontroller-helm oci://ghcr.io/metacontroller/metacontroller-helm --version <version>
 ```

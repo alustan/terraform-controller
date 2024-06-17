@@ -6,7 +6,7 @@ image:
   repository: alustan/terraform-controller
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "v0.44.0"
+  tag: "v0.1.0"
 
 imagePullSecrets: []
 nameOverride: "terraform-controller-helm"
@@ -32,7 +32,7 @@ gitSSHSecretKey: ""
 
 serviceAccount:
    # Specifies whether a service account should be created
-  create: true
+  create: false
  # Automatically mount a ServiceAccount's API credentials?
   automount: true
   # Annotations to add to the service account
@@ -40,7 +40,7 @@ serviceAccount:
     # eks.amazonaws.com/role-arn: ""
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
-  name: ""
+  name: "default"
 
 podAnnotations: {}
 podLabels: {}

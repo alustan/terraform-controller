@@ -3,12 +3,13 @@ package container
 import (
     "context"
     "encoding/base64"
-    "log"
     "fmt"
+    "log"
 
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // CreateDockerConfigSecret creates a Kubernetes Secret of type kubernetes.io/dockerconfigjson
@@ -35,13 +36,20 @@ func CreateDockerConfigSecret(clientset *kubernetes.Clientset, secretName, names
         Type: corev1.SecretTypeDockerConfigJson,
     }
 
-    // Create the secret in the Kubernetes cluster
+    // Attempt to create the secret
     _, err = clientset.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
     if err != nil {
-        return fmt.Errorf("failed to create secret: %v", err)
+        // If the secret already exists, update it
+        if apierrors.IsAlreadyExists(err) {
+            log.Printf("Secret %s already exists, updating it", secretName)
+            _, err = clientset.CoreV1().Secrets(namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+            if err != nil {
+                return fmt.Errorf("failed to update existing secret: %v", err)
+            }
+        } else {
+            return fmt.Errorf("failed to create secret: %v", err)
+        }
     }
 
     return nil
 }
-
-

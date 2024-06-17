@@ -1,295 +1,301 @@
 package controller
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"path/filepath"
-	"time"
+    "context"
+    "encoding/json"
+    "fmt"
+    "log"
+    "net/http"
+    "os"
+    "path/filepath"
+    "time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/alustan/terraform-controller/pkg/container"
-	"github.com/alustan/terraform-controller/pkg/kubernetes"
-	"github.com/alustan/terraform-controller/pkg/util"
-	"github.com/alustan/terraform-controller/plugin"
+    "github.com/gin-gonic/gin"
+    "github.com/alustan/terraform-controller/pkg/container"
+    "github.com/alustan/terraform-controller/pkg/kubernetes"
+    "github.com/alustan/terraform-controller/pkg/util"
+    "github.com/alustan/terraform-controller/plugin"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime/schema"
+    "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
-	dynclient "k8s.io/client-go/dynamic"
-	k8sclient "k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+    dynclient "k8s.io/client-go/dynamic"
+    k8sclient "k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/rest"
 )
 
 const (
-	maxRetries = 10
+    maxRetries = 10
 )
 
 type Controller struct {
-	clientset *k8sclient.Clientset
-	dynClient dynclient.Interface
+    clientset *k8sclient.Clientset
+    dynClient dynclient.Interface
 }
 
 type TerraformConfigSpec struct {
-	Provider  string            `json:"provider"`
-	Variables map[string]string `json:"variables"`
-	Scripts   Scripts           `json:"scripts"`
-	GitRepo   GitRepo           `json:"gitRepo"`
-	ContainerRegistry ContainerRegistry `json:"containerRegistry"`
+    Provider  string            `json:"provider"`
+    Variables map[string]string `json:"variables"`
+    Scripts   Scripts           `json:"scripts"`
+    GitRepo   GitRepo           `json:"gitRepo"`
+    ContainerRegistry ContainerRegistry `json:"containerRegistry"`
 }
 
 type Scripts struct {
-	Deploy  string `json:"deploy"`
-	Destroy string `json:"destroy"`
+    Deploy  string `json:"deploy"`
+    Destroy string `json:"destroy"`
 }
 
 type GitRepo struct {
-	URL    string `json:"url"`
-	Branch string `json:"branch"`
+    URL    string `json:"url"`
+    Branch string `json:"branch"`
 }
 
 type ContainerRegistry struct {
-	ImageName string `json:"imageName"`
+    ImageName string `json:"imageName"`
 }
 
 type ParentResource struct {
-	ApiVersion string            `json:"apiVersion"`
-	Kind       string            `json:"kind"`
-	Metadata   metav1.ObjectMeta `json:"metadata"`
-	Spec       TerraformConfigSpec `json:"spec"`
+    ApiVersion string            `json:"apiVersion"`
+    Kind       string            `json:"kind"`
+    Metadata   metav1.ObjectMeta `json:"metadata"`
+    Spec       TerraformConfigSpec `json:"spec"`
 }
 
 type SyncRequest struct {
-	Parent     ParentResource `json:"parent"`
-	Finalizing bool           `json:"finalizing"`
+    Parent     ParentResource `json:"parent"`
+    Finalizing bool           `json:"finalizing"`
 }
 
 func NewController(clientset *k8sclient.Clientset, dynClient dynclient.Interface) *Controller {
-	return &Controller{
-		clientset: clientset,
-		dynClient: dynClient,
-	}
+    return &Controller{
+        clientset: clientset,
+        dynClient: dynClient,
+    }
 }
 
 func NewInClusterController() *Controller {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		log.Fatalf("Error creating in-cluster config: %v", err)
-	}
+    config, err := rest.InClusterConfig()
+    if err != nil {
+        log.Fatalf("Error creating in-cluster config: %v", err)
+    }
 
-	clientset, err := k8sclient.NewForConfig(config)
-	if err != nil {
-		log.Fatalf("Error creating Kubernetes clientset: %v", err)
-	}
+    clientset, err := k8sclient.NewForConfig(config)
+    if err != nil {
+        log.Fatalf("Error creating Kubernetes clientset: %v", err)
+    }
 
-	dynClient, err := dynclient.NewForConfig(config)
-	if err != nil {
-		log.Fatalf("Error creating dynamic Kubernetes client: %v", err)
-	}
+    dynClient, err := dynclient.NewForConfig(config)
+    if err != nil {
+        log.Fatalf("Error creating dynamic Kubernetes client: %v", err)
+    }
 
-	return NewController(clientset, dynClient)
+    return NewController(clientset, dynClient)
 }
 
 func (c *Controller) ServeHTTP(r *gin.Context) {
-	var observed SyncRequest
-	err := json.NewDecoder(r.Request.Body).Decode(&observed)
-	if err != nil {
-		r.String(http.StatusBadRequest, err.Error())
-		return
-	}
-	defer func() {
-		if err := r.Request.Body.Close(); err != nil {
-			log.Printf("Error closing request body: %v", err)
-		}
-	}()
+    var observed SyncRequest
+    err := json.NewDecoder(r.Request.Body).Decode(&observed)
+    if err != nil {
+        r.String(http.StatusBadRequest, err.Error())
+        return
+    }
+    defer func() {
+        if err := r.Request.Body.Close(); err != nil {
+            log.Printf("Error closing request body: %v", err)
+        }
+    }()
 
-	response := c.handleSyncRequest(observed)
+    response := c.handleSyncRequest(observed)
 
-	r.Writer.Header().Set("Content-Type", "application/json")
-	r.JSON(http.StatusOK, gin.H{"body": response})
+    r.Writer.Header().Set("Content-Type", "application/json")
+    r.JSON(http.StatusOK, gin.H{"body": response})
 }
 
 func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interface{} {
-	envVars := c.extractEnvVars(observed.Parent.Spec.Variables)
-	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
+    envVars := c.extractEnvVars(observed.Parent.Spec.Variables)
+    log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
 
-	scriptContent := observed.Parent.Spec.Scripts.Deploy
-	if scriptContent == "" {
-		status := c.errorResponse("executing deploy script", fmt.Errorf("deploy script is missing"))
-		c.updateStatus(observed, status)
-		return status
+    scriptContent := observed.Parent.Spec.Scripts.Deploy
+    if scriptContent == "" {
+        status := c.errorResponse("executing deploy script", fmt.Errorf("deploy script is missing"))
+        c.updateStatus(observed, status)
+        return status
+    }
+
+    if observed.Finalizing {
+        scriptContent = observed.Parent.Spec.Scripts.Destroy
+        if scriptContent == "" {
+            status := c.errorResponse("executing destroy script", fmt.Errorf("destroy script is missing"))
+            c.updateStatus(observed, status)
+            return status
+        }
+    }
+
+    repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
+    sshKey := os.Getenv("GIT_SSH_SECRET")
+
+    dockerfileAdditions, providerExists, err := c.setupProvider(observed.Parent.Spec.Provider)
+    if err != nil {
+        status := c.errorResponse("setting up backend", err)
+        c.updateStatus(observed, status)
+        return status
+    }
+
+    configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, dockerfileAdditions, providerExists)
+    if err != nil {
+        status := c.errorResponse("creating Dockerfile ConfigMap", err)
+        c.updateStatus(observed, status)
+        return status
+    }
+
+    encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
+    if encodedDockerConfigJSON == "" {
+        log.Println("Environment variable CONTAINER_REGISTRY_SECRET is not set")
+        status := c.errorResponse("creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
+        c.updateStatus(observed, status)
+        return status
 	}
+    secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
+    err = container.CreateDockerConfigSecret(c.clientset, secretName, observed.Parent.Metadata.Namespace, encodedDockerConfigJSON)
+    if err != nil {
+        status := c.errorResponse("creating Docker config secret", err)
+        c.updateStatus(observed, status)
+        return status
+    }
 
-	if observed.Finalizing {
-		scriptContent = observed.Parent.Spec.Scripts.Destroy
-		if scriptContent == "" {
-			status := c.errorResponse("executing destroy script", fmt.Errorf("destroy script is missing"))
-			c.updateStatus(observed, status)
-			return status
-		}
-	}
+    pvcName := fmt.Sprintf("pvc-%s", observed.Parent.Metadata.Name)
 
-	repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
-	sshKey := os.Getenv("GIT_SSH_SECRET")
+    err = container.EnsurePVC(c.clientset, observed.Parent.Metadata.Namespace, pvcName)
+    if err != nil {
+        status := c.errorResponse("creating PVC", err)
+        c.updateStatus(observed, status)
+        return status
+    }
 
-	dockerfileAdditions, providerExists, err := c.setupProvider(observed.Parent.Spec.Provider)
-	if err != nil {
-		status := c.errorResponse("setting up backend", err)
-		c.updateStatus(observed, status)
-		return status
-	}
+    taggedImageName, _, err := c.buildAndTagImage(observed, configMapName, repoDir, sshKey, secretName, pvcName)
+    if err != nil {
+        status := c.errorResponse("creating build job", err)
+        c.updateStatus(observed, status)
+        return status
+    }
 
-	configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, dockerfileAdditions, providerExists)
-	if err != nil {
-		status := c.errorResponse("creating Dockerfile ConfigMap", err)
-		c.updateStatus(observed, status)
-		return status
-	}
+    status := c.runTerraform(observed, scriptContent, taggedImageName, secretName, envVars)
 
-	encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
-	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
-	err = container.CreateDockerConfigSecret(c.clientset, secretName, observed.Parent.Metadata.Namespace, encodedDockerConfigJSON)
-	if err != nil {
-		status := c.errorResponse("creating Docker config secret", err)
-		c.updateStatus(observed, status)
-		return status
-	}
+    c.updateStatus(observed, status)
 
-	pvcName := fmt.Sprintf("pvc-%s", observed.Parent.Metadata.Name)
-
-	err = container.EnsurePVC(c.clientset, observed.Parent.Metadata.Namespace, pvcName)
-	if err != nil {
-		status := c.errorResponse("creating PVC", err)
-		c.updateStatus(observed, status)
-		return status
-	}
-
-	taggedImageName, _, err := c.buildAndTagImage(observed, configMapName, repoDir, sshKey, secretName, pvcName)
-	if err != nil {
-		status := c.errorResponse("creating build job", err)
-		c.updateStatus(observed, status)
-		return status
-	}
-
-	status := c.runTerraform(observed, scriptContent, taggedImageName, secretName, envVars)
-
-	c.updateStatus(observed, status)
-
-	return status
+    return status
 }
 
 func (c *Controller) updateStatus(observed SyncRequest, status map[string]interface{}) {
-	err := kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
-	if err != nil {
-		log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, err)
-	}
+    err := kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
+    if err != nil {
+        log.Printf("Error updating status for %s: %v", observed.Parent.Metadata.Name, err)
+    }
 }
 
 func (c *Controller) extractEnvVars(variables map[string]string) map[string]string {
-	if variables == nil {
-		return nil
-	}
-	return util.ExtractEnvVars(variables)
+    if variables == nil {
+        return nil
+    }
+    return util.ExtractEnvVars(variables)
 }
 
 func (c *Controller) setupProvider(providerType string) (string, bool, error) {
-	provider, err := plugin.GetProvider(providerType)
-	if err != nil {
-		return "", false, fmt.Errorf("error getting provider: %v", err)
-	}
+    provider, err := plugin.GetProvider(providerType)
+    if err != nil {
+        return "", false, fmt.Errorf("error getting provider: %v", err)
+    }
 
-	return provider.GetDockerfileAdditions(), true, nil
+    return provider.GetDockerfileAdditions(), true, nil
 }
 
 func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir, sshKey, secretName, pvcName string) (string, string, error) {
-	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
+    imageName := observed.Parent.Spec.ContainerRegistry.ImageName
 
-	return container.CreateBuildPod(c.clientset,
-		observed.Parent.Metadata.Name,
-		observed.Parent.Metadata.Namespace,
-		configMapName,
-		imageName,
-		secretName,
-		repoDir,
-		observed.Parent.Spec.GitRepo.URL,
-		observed.Parent.Spec.GitRepo.Branch,
-		sshKey,
-		pvcName)
+    return container.CreateBuildPod(c.clientset,
+        observed.Parent.Metadata.Name,
+        observed.Parent.Metadata.Namespace,
+        configMapName,
+        imageName,
+        secretName,
+        repoDir,
+        observed.Parent.Spec.GitRepo.URL,
+        observed.Parent.Spec.GitRepo.Branch,
+        sshKey,
+        pvcName)
 }
 
 func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedImageName, secretName string, envVars map[string]string) map[string]interface{} {
 
-	var terraformErr error
-	for i := 0; i < maxRetries; i++ {
-		terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, secretName)
-		if terraformErr == nil {
-			break
-		}
-		log.Printf("Retrying Terraform command due to error: %v", terraformErr)
-		time.Sleep(1 * time.Minute)
-	}
+    var terraformErr error
+    for i := 0; i < maxRetries; i++ {
+        terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, secretName)
+        if terraformErr == nil {
+            break
+        }
+        log.Printf("Retrying Terraform command due to error: %v", terraformErr)
+        time.Sleep(1 * time.Minute)
+    }
 
-	status := map[string]interface{}{
-		"state":   "Success",
-		"message": "Terraform applied successfully",
-	}
-	if terraformErr != nil {
-		status["state"] = "Failed"
-		status["message"] = terraformErr.Error()
-	}
+    status := map[string]interface{}{
+        "state":   "Success",
+        "message": "Terraform applied successfully",
+    }
+    if terraformErr != nil {
+        status["state"] = "Failed"
+        status["message"] = terraformErr.Error()
+    }
 
-	return status
+    return status
 }
 
 func (c *Controller) errorResponse(action string, err error) map[string]interface{} {
-	log.Printf("Error %s: %v", action, err)
-	return map[string]interface{}{
-		"state":   "error",
-		"message": fmt.Sprintf("Error %s: %v", action, err),
-	}
+    log.Printf("Error %s: %v", action, err)
+    return map[string]interface{}{
+        "state":   "error",
+        "message": fmt.Sprintf("Error %s: %v", action, err),
+    }
 }
 
 func (c *Controller) Reconcile(syncInterval time.Duration) {
-	for {
-		c.reconcileLoop()
-		time.Sleep(syncInterval)
-	}
+    for {
+        c.reconcileLoop()
+        time.Sleep(syncInterval)
+    }
 }
 
 func (c *Controller) reconcileLoop() {
-	log.Println("Starting reconciliation loop")
-	resourceList, err := c.dynClient.Resource(schema.GroupVersionResource{
-		Group:    "alustan.io",
-		Version:  "v1alpha1",
-		Resource: "terraforms",
-	}).Namespace("").List(context.Background(), metav1.ListOptions{})
-	if err != nil {
-		log.Printf("Error fetching Terraform resources: %v", err)
-		return
-	}
+    log.Println("Starting reconciliation loop")
+    resourceList, err := c.dynClient.Resource(schema.GroupVersionResource{
+        Group:    "alustan.io",
+        Version:  "v1alpha1",
+        Resource: "terraforms",
+    }).Namespace("").List(context.Background(), metav1.ListOptions{})
+    if err != nil {
+        log.Printf("Error fetching Terraform resources: %v", err)
+        return
+    }
 
-	log.Printf("Fetched %d Terraform resources", len(resourceList.Items))
+    log.Printf("Fetched %d Terraform resources", len(resourceList.Items))
 
-	for _, item := range resourceList.Items {
-		go func(item unstructured.Unstructured) {
-			var observed SyncRequest
-			raw, err := item.MarshalJSON()
-			if err != nil {
-				log.Printf("Error marshalling item: %v", err)
-				return
-			}
-			err = json.Unmarshal(raw, &observed)
-			if err != nil {
-				log.Printf("Error unmarshalling item: %v", err)
-				return
-			}
+    for _, item := range resourceList.Items {
+        go func(item unstructured.Unstructured) {
+            var observed SyncRequest
+            raw, err := item.MarshalJSON()
+            if err != nil {
+                log.Printf("Error marshalling item: %v", err)
+                return
+            }
+            err = json.Unmarshal(raw, &observed)
+            if err != nil {
+                log.Printf("Error unmarshalling item: %v", err)
+                return
+            }
 
-			log.Printf("Handling resource: %s", observed.Parent.Metadata.Name)
-			c.handleSyncRequest(observed)
-		}(item)
-	}
+            log.Printf("Handling resource: %s", observed.Parent.Metadata.Name)
+            c.handleSyncRequest(observed)
+        }(item)
+    }
 }

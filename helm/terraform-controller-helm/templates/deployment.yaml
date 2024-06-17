@@ -56,15 +56,19 @@ spec:
                   name: {{ .Values.gitSSHSecretName }}
                   key: {{ .Values.gitSSHSecretKey }}
             {{- else }}
+           
             - name: CONTAINER_REGISTRY_SECRET
               value: {{ .Values.containerRegistry.containerRegistrySecret }}
+           
+            {{- if .Values.gitSSHSecret }}
             - name: GIT_SSH_SECRET
               value: {{ .Values.gitRepo.gitSSHSecret }}
+            {{- end }}
             {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
-      
+          
          

@@ -9,7 +9,7 @@ rules:
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["alustan.io"]
   resources: ["terraforms/status"]
-  verbs: ["update"]
+  verbs: ["get", "update"]
 - apiGroups: [""]
   resources: ["configmaps", "pods", "persistentvolumeclaims", "secrets"] 
   verbs: ["create", "get", "list", "watch", "update", "delete", "patch"]

@@ -5,10 +5,12 @@ description: A Helm chart for Terraform Controller
 
 type: application
 
-version: 0.52.0
+version: 0.1.0
 
 
-appVersion: "0.52.0"
+appVersion: "0.1.0"
+
+
 
 
 

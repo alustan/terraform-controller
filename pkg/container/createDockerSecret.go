@@ -9,7 +9,7 @@ import (
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
 )
 
 // CreateDockerConfigSecret creates a Kubernetes Secret of type kubernetes.io/dockerconfigjson
@@ -20,9 +20,6 @@ func CreateDockerConfigSecret(clientset *kubernetes.Clientset, secretName, names
     if err != nil {
         return fmt.Errorf("invalid base64 encoded docker config JSON: %v", err)
     }
-
-    // Log decoded data for debugging
-    log.Printf("Decoded Docker Config JSON: %s\n", string(decodedData))
 
     // Define the secret
     secret := &corev1.Secret{
@@ -39,12 +36,16 @@ func CreateDockerConfigSecret(clientset *kubernetes.Clientset, secretName, names
     // Attempt to create the secret
     _, err = clientset.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
     if err != nil {
-        // If the secret already exists, update it
+        // If the secret already exists, delete and recreate it
         if apierrors.IsAlreadyExists(err) {
-            log.Printf("Secret %s already exists, updating it", secretName)
-            _, err = clientset.CoreV1().Secrets(namespace).Update(context.TODO(), secret, metav1.UpdateOptions{})
+            log.Printf("Secret %s already exists, deleting and recreating it", secretName)
+            err = clientset.CoreV1().Secrets(namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
             if err != nil {
-                return fmt.Errorf("failed to update existing secret: %v", err)
+                return fmt.Errorf("failed to delete existing secret: %v", err)
+            }
+            _, err = clientset.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
+            if err != nil {
+                return fmt.Errorf("failed to recreate secret: %v", err)
             }
         } else {
             return fmt.Errorf("failed to create secret: %v", err)

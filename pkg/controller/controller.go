@@ -26,7 +26,7 @@ import (
 )
 
 const (
-    maxRetries = 10
+    maxRetries = 5
 )
 
 type Controller struct {
@@ -117,6 +117,13 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
     envVars := c.extractEnvVars(observed.Parent.Spec.Variables)
     log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
 
+    // Initial status update: processing started
+    initialStatus := map[string]interface{}{
+        "state":   "Progressing",
+        "message": "Starting processing",
+    }
+    c.updateStatus(observed, initialStatus)
+
     scriptContent := observed.Parent.Spec.Scripts.Deploy
     if scriptContent == "" {
         status := c.errorResponse("executing deploy script", fmt.Errorf("deploy script is missing"))
@@ -133,6 +140,12 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         }
     }
 
+    // Status update: setting up provider
+    c.updateStatus(observed, map[string]interface{}{
+        "state":   "Progressing",
+        "message": "Setting up provider",
+    })
+
     repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
     sshKey := os.Getenv("GIT_SSH_SECRET")
 
@@ -143,6 +156,12 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         return status
     }
 
+    // Status update: creating Dockerfile ConfigMap
+    c.updateStatus(observed, map[string]interface{}{
+        "state":   "Progressing",
+        "message": "Creating Dockerfile ConfigMap",
+    })
+
     configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, dockerfileAdditions, providerExists)
     if err != nil {
         status := c.errorResponse("creating Dockerfile ConfigMap", err)
@@ -150,13 +169,19 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         return status
     }
 
+    // Status update: creating Docker config secret
+    c.updateStatus(observed, map[string]interface{}{
+        "state":   "Progressing",
+        "message": "Creating Docker config secret",
+    })
+
     encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
     if encodedDockerConfigJSON == "" {
         log.Println("Environment variable CONTAINER_REGISTRY_SECRET is not set")
         status := c.errorResponse("creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
         c.updateStatus(observed, status)
         return status
-	}
+    }
     secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
     err = container.CreateDockerConfigSecret(c.clientset, secretName, observed.Parent.Metadata.Namespace, encodedDockerConfigJSON)
     if err != nil {
@@ -164,6 +189,12 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         c.updateStatus(observed, status)
         return status
     }
+
+    // Status update: creating PVC
+    c.updateStatus(observed, map[string]interface{}{
+        "state":   "Progressing",
+        "message": "Creating PVC",
+    })
 
     pvcName := fmt.Sprintf("pvc-%s", observed.Parent.Metadata.Name)
 
@@ -174,12 +205,24 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         return status
     }
 
+    // Status update: building and tagging image
+    c.updateStatus(observed, map[string]interface{}{
+        "state":   "Progressing",
+        "message": "Building and tagging image",
+    })
+
     taggedImageName, _, err := c.buildAndTagImage(observed, configMapName, repoDir, sshKey, secretName, pvcName)
     if err != nil {
         status := c.errorResponse("creating build job", err)
         c.updateStatus(observed, status)
         return status
     }
+
+    // Status update: running Terraform
+    c.updateStatus(observed, map[string]interface{}{
+        "state":   "Progressing",
+        "message": "Running Terraform",
+    })
 
     status := c.runTerraform(observed, scriptContent, taggedImageName, secretName, envVars)
 

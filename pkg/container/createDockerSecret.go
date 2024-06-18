@@ -36,16 +36,28 @@ func CreateDockerConfigSecret(clientset *kubernetes.Clientset, secretName, names
     // Attempt to create the secret
     _, err = clientset.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
     if err != nil {
-        // If the secret already exists, delete and recreate it
+        // If the secret already exists, update it if necessary
         if apierrors.IsAlreadyExists(err) {
-            log.Printf("Secret %s already exists, deleting and recreating it", secretName)
-            err = clientset.CoreV1().Secrets(namespace).Delete(context.TODO(), secretName, metav1.DeleteOptions{})
+            log.Printf("Secret %s already exists, checking if it needs to be updated", secretName)
+            
+            // Fetch the existing secret
+            existingSecret, err := clientset.CoreV1().Secrets(namespace).Get(context.TODO(), secretName, metav1.GetOptions{})
             if err != nil {
-                return fmt.Errorf("failed to delete existing secret: %v", err)
+                return fmt.Errorf("failed to get existing secret: %v", err)
             }
-            _, err = clientset.CoreV1().Secrets(namespace).Create(context.TODO(), secret, metav1.CreateOptions{})
-            if err != nil {
-                return fmt.Errorf("failed to recreate secret: %v", err)
+
+            // Check if the existing secret's data is different from the new data
+            if existingSecret.Data[".dockerconfigjson"] == nil || !equal(existingSecret.Data[".dockerconfigjson"], decodedData) {
+                log.Printf("Secret %s needs to be updated", secretName)
+                existingSecret.Data[".dockerconfigjson"] = decodedData
+
+                // Update the existing secret
+                _, err = clientset.CoreV1().Secrets(namespace).Update(context.TODO(), existingSecret, metav1.UpdateOptions{})
+                if err != nil {
+                    return fmt.Errorf("failed to update existing secret: %v", err)
+                }
+            } else {
+                log.Printf("Secret %s is already up-to-date", secretName)
             }
         } else {
             return fmt.Errorf("failed to create secret: %v", err)
@@ -54,3 +66,17 @@ func CreateDockerConfigSecret(clientset *kubernetes.Clientset, secretName, names
 
     return nil
 }
+
+// equal checks if two byte slices are equal
+func equal(a, b []byte) bool {
+    if len(a) != len(b) {
+        return false
+    }
+    for i := range a {
+        if a[i] != b[i] {
+            return false
+        }
+    }
+    return true
+}
+

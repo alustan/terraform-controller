@@ -59,8 +59,8 @@ spec:
   containerRegistry:
     imageName: docker.io/alustan/terraform-control # imagename to be built by the controller
 #  status:
-#   state: "Pending"
-#   message: "Awaiting processing"
+#   state: "Progressing"
+#   message: "Setting up provider"
 ```
 
 **This is one of multiple projects that aims to setup a functional platform for seemless app deployment with less technical overhead**

@@ -146,7 +146,9 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         "message": "Setting up provider",
     })
 
-    repoDir := filepath.Join("/tmp", observed.Parent.Metadata.Name)
+  
+   repoDir := filepath.Join("/workspace", "tmp", observed.Parent.Metadata.Name)
+  
     sshKey := os.Getenv("GIT_SSH_SECRET")
 
     dockerfileAdditions, providerExists, err := c.setupProvider(observed.Parent.Spec.Provider)

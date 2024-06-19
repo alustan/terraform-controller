@@ -15,7 +15,7 @@ CLONE_DIR := ./cmd/gitclone
 TEST_DIR := ./test
 
 # Targets
-.PHONY: all build build-clone test setup lint clean docker-build docker-push 
+.PHONY: all build git-clone test setup lint clean docker-build docker-push 
 
 all: build
 
@@ -23,7 +23,7 @@ all: build
 build:
 	$(GO) build -o bin/$(APP_NAME) $(SRC_DIR)
 
-build-clone:
+git-clone:
 	$(GO) build -o bin/$(GIT_CLONE_NAME) $(CLONE_DIR)
 
 ## Run tests
@@ -59,7 +59,7 @@ help:
 	@echo "Targets:"
 	@echo "  all           Build the application"
 	@echo "  build         Build the application binary"
-	@echo "  build-clone   Builds the git clone application binary"
+	@echo "  git-clone   Builds the git clone application binary"
 	@echo "  test          Run tests"
 	@echo "  lint          Run linting"
 	@echo "  clean         Clean build artifacts"

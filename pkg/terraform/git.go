@@ -3,8 +3,6 @@ package terraform
 import (
 	"log"
 	"os"
-	"path/filepath"
-
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"golang.org/x/crypto/ssh"
@@ -68,31 +66,14 @@ func CloneOrPullRepo(repoURL, branch, repoDir, sshKey string) error {
 		err = worktree.Pull(&git.PullOptions{
 			ReferenceName: plumbing.NewBranchReferenceName(branch),
 			Auth:          auth,
-			Force:         true,
 		})
 		if err != nil && err != git.NoErrAlreadyUpToDate {
-			log.Printf("Failed to pull repository: %v", err)
+			log.Printf("Failed to pull latest changes: %v", err)
 			return err
 		}
-		log.Println("Repository pulled successfully.")
+
+		log.Println("Repository updated successfully.")
 	}
 
-	// Log the files in the cloned repository directory
-	log.Printf("Listing files in the directory: %s", repoDir)
-	err = filepath.Walk(repoDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			log.Printf("File: %s", path)
-		}
-		return nil
-	})
-	if err != nil {
-		log.Printf("Failed to list files: %v", err)
-		return err
-	}
-
-	log.Println("CloneOrPullRepo completed successfully.")
 	return nil
 }

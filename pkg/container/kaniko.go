@@ -34,7 +34,7 @@ func checkExistingBuildPods(clientset *kubernetes.Clientset, namespace, labelSel
 }
 
 // CreateBuildPod creates a Kubernetes Pod to run a Kaniko build.
-func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName, repoDir, gitRepo, branch, sshKey,pvcName string) (string, string, error) {
+func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapName, imageName, dockerSecretName, repoDir, gitRepo, branch, sshKey, pvcName string) (string, string, error) {
 
 	labelSelector := fmt.Sprintf("appbuild=%s", name)
 	
@@ -93,7 +93,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "workspace",
-							MountPath: "/tmp",
+							MountPath: "/workspace",
 						},
 					},
 				},
@@ -103,9 +103,9 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					Name:  "kaniko",
 					Image: "gcr.io/kaniko-project/executor:v1.23.1-debug",
 					Args: []string{
-						"--dockerfile=" + repoDir + "/Dockerfile",
+						"--dockerfile=/workspace/tmp/" + name + "/Dockerfile",
 						"--destination=" + taggedImageName,
-						"--context=" + repoDir,
+						"--context=/workspace/tmp/" + name,
 					},
 					Env: []corev1.EnvVar{
 						{
@@ -116,38 +116,17 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 					VolumeMounts: []corev1.VolumeMount{
 						{
 							Name:      "workspace",
-							MountPath: "/tmp",
+							MountPath: "/workspace",
 						},
 						{
 							Name:      "docker-credentials",
 							MountPath: "/root/.docker",
-						},
-						{
-							Name:      "dockerfile-config",
-							MountPath: repoDir + "/Dockerfile",
-							SubPath:   "Dockerfile",
 						},
 					},
 				},
 			},
 			RestartPolicy: corev1.RestartPolicyNever,
 			Volumes: []corev1.Volume{
-				{
-					Name: "dockerfile-config",
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: configMapName,
-							},
-							Items: []corev1.KeyToPath{
-								{
-									Key:  "Dockerfile",
-									Path: "Dockerfile",
-								},
-							},
-						},
-					},
-				},
 				{
 					Name: "workspace",
 					VolumeSource: corev1.VolumeSource{

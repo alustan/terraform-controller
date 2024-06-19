@@ -71,7 +71,7 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 			InitContainers: []corev1.Container{
 				{
 					Name:  "git-clone",
-					Image: "docker.io/alustan/git-clone:0.3.0",
+					Image: "docker.io/alustan/git-clone:0.4.0",
 					Env: []corev1.EnvVar{
 						{
 							Name:  "REPO_URL",

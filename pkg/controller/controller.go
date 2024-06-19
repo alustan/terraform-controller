@@ -281,7 +281,7 @@ func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedIma
             break
         }
         log.Printf("Retrying Terraform command due to error: %v", terraformErr)
-        time.Sleep(1 * time.Minute)
+        time.Sleep(5 * time.Minute)
     }
 
     status := map[string]interface{}{

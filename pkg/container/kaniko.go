@@ -122,6 +122,11 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 							Name:      "docker-credentials",
 							MountPath: "/root/.docker",
 						},
+						{
+							Name:      "dockerfile-config",
+							MountPath: "/workspace/tmp/" + name + "/Dockerfile",
+							SubPath:   "Dockerfile",
+						},
 					},
 				},
 			},
@@ -144,6 +149,22 @@ func CreateBuildPod(clientset *kubernetes.Clientset, name, namespace, configMapN
 								{
 									Key:  ".dockerconfigjson",
 									Path: "config.json",
+								},
+							},
+						},
+					},
+				},
+				{
+					Name: "dockerfile-config",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: configMapName,
+							},
+							Items: []corev1.KeyToPath{
+								{
+									Key:  "Dockerfile",
+									Path: "Dockerfile",
 								},
 							},
 						},

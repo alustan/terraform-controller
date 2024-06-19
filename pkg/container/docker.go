@@ -2,6 +2,8 @@ package container
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 
@@ -10,6 +12,13 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 )
+
+// hashString computes a SHA-256 hash of a given string.
+func hashString(s string) string {
+	h := sha256.New()
+	h.Write([]byte(s))
+	return hex.EncodeToString(h.Sum(nil))
+}
 
 // DeleteConfigMapIfExists deletes the ConfigMap if it already exists.
 func DeleteConfigMapIfExists(clientset *kubernetes.Clientset, namespace, configMapName string) error {
@@ -76,10 +85,30 @@ CMD ["/bin/bash"]
 
 	configMapName := fmt.Sprintf("%s-dockerfile-configmap", name)
 
-	// Attempt to delete the existing ConfigMap if it exists
-	err := DeleteConfigMapIfExists(clientset, namespace, configMapName)
-	if err != nil {
+	// Check if the ConfigMap exists and compare its data
+	existingConfigMap, err := clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		log.Printf("Failed to get ConfigMap: %v", err)
 		return "", err
+	}
+
+	desiredHash := hashString(content)
+	var existingHash string
+	if existingConfigMap != nil {
+		existingHash = hashString(existingConfigMap.Data["Dockerfile"])
+	}
+
+	if existingConfigMap != nil && existingHash == desiredHash {
+		log.Printf("ConfigMap %s already exists and is up to date", configMapName)
+		return configMapName, nil
+	}
+
+	// If the ConfigMap needs updating, delete the existing one if it exists
+	if existingConfigMap != nil {
+		err = DeleteConfigMapIfExists(clientset, namespace, configMapName)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	// Create the new ConfigMap
@@ -101,3 +130,4 @@ CMD ["/bin/bash"]
 	log.Printf("Created ConfigMap: %s", configMapName)
 	return configMapName, nil
 }
+

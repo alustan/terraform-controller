@@ -14,8 +14,8 @@ import (
     "github.com/alustan/terraform-controller/pkg/container"
     "github.com/alustan/terraform-controller/pkg/kubernetes"
     "github.com/alustan/terraform-controller/pkg/util"
-    "github.com/alustan/terraform-controller/plugin"
-
+    "github.com/alustan/terraform-controller/pluginregistry"
+    
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime/schema"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -146,12 +146,11 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
         "message": "Setting up provider",
     })
 
-  
-   repoDir := filepath.Join("/workspace", "tmp", observed.Parent.Metadata.Name)
-  
+    repoDir := filepath.Join("/workspace", "tmp", observed.Parent.Metadata.Name)
     sshKey := os.Getenv("GIT_SSH_SECRET")
 
-    dockerfileAdditions, providerExists, err := c.setupProvider(observed.Parent.Spec.Provider)
+    // Setup provider and get Dockerfile additions
+    dockerfileAdditions, providerExists, err := c.setupProvider(observed.Parent.Spec.Provider, observed.Parent.Metadata.Labels["workspace"], observed.Parent.Metadata.Labels["region"])
     if err != nil {
         status := c.errorResponse("setting up backend", err)
         c.updateStatus(observed, status)
@@ -165,7 +164,7 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
     })
 
     configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, dockerfileAdditions, providerExists)
-    if err != nil {
+    if (err != nil) {
         status := c.errorResponse("creating Dockerfile ConfigMap", err)
         c.updateStatus(observed, status)
         return status
@@ -230,7 +229,33 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 
     c.updateStatus(observed, status)
 
-    return status
+    // Skip plugin execution if Provider is empty
+    if observed.Parent.Spec.Provider != "" {
+        // Execute the plugin after running Terraform
+        pluginCreds, err := c.executePlugin(observed.Parent.Spec.Provider, observed.Parent.Metadata.Labels["workspace"], observed.Parent.Metadata.Labels["region"])
+        if err != nil {
+            finalStatus := c.errorResponse("executing plugin", err)
+            c.updateStatus(observed, finalStatus)
+            return finalStatus
+        }
+
+        // Update status with plugin credentials
+        pluginStatus := map[string]interface{}{
+            "state":       "Completed",
+            "message":     "Processing completed successfully",
+            "pluginCreds": pluginCreds,
+        }
+        c.updateStatus(observed, pluginStatus)
+        return pluginStatus
+    }
+
+    finalStatus := map[string]interface{}{
+        "state":   "Completed",
+        "message": "Processing completed successfully",
+    }
+
+    c.updateStatus(observed, finalStatus)
+    return finalStatus
 }
 
 func (c *Controller) updateStatus(observed SyncRequest, status map[string]interface{}) {
@@ -247,14 +272,23 @@ func (c *Controller) extractEnvVars(variables map[string]string) map[string]stri
     return util.ExtractEnvVars(variables)
 }
 
-func (c *Controller) setupProvider(providerType string) (string, bool, error) {
-    provider, err := plugin.GetProvider(providerType)
+func (c *Controller) setupProvider(providerType, workspace, region string) (string, bool, error) {
+    provider, err := pluginregistry.SetupPlugin(c.clientset, providerType, workspace, region)
     if err != nil {
-        return "", false, fmt.Errorf("error getting provider: %v", err)
+        return "", false, err
     }
-
     return provider.GetDockerfileAdditions(), true, nil
 }
+
+
+func (c *Controller) executePlugin(providerType, workspace, region string) (map[string]interface{}, error) {
+	provider, err := pluginregistry.SetupPlugin(c.clientset,providerType, workspace, region)
+	if err != nil {
+		return nil, fmt.Errorf("error getting plugin: %v", err)
+	}
+	return provider.Execute()
+}
+
 
 func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir, sshKey, secretName, pvcName string) (string, string, error) {
     imageName := observed.Parent.Spec.ContainerRegistry.ImageName
@@ -273,28 +307,50 @@ func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoD
 }
 
 func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedImageName, secretName string, envVars map[string]string) map[string]interface{} {
+	var terraformErr error
+	var podName string
 
-    var terraformErr error
-    for i := 0; i < maxRetries; i++ {
-        terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, secretName)
-        if terraformErr == nil {
-            break
-        }
-        log.Printf("Retrying Terraform command due to error: %v", terraformErr)
-        time.Sleep(5 * time.Minute)
-    }
+	for i := 0; i < maxRetries; i++ {
+		podName, terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, secretName)
+		if terraformErr == nil {
+			break
+		}
+		log.Printf("Retrying Terraform command due to error: %v", terraformErr)
+		time.Sleep(5 * time.Minute)
+	}
 
-    status := map[string]interface{}{
-        "state":   "Success",
-        "message": "Terraform applied successfully",
-    }
-    if terraformErr != nil {
+	status := map[string]interface{}{
+		"state":   "Success",
+		"message": "Terraform applied successfully",
+	}
+	if terraformErr != nil {
+		status["state"] = "Failed"
+		status["message"] = terraformErr.Error()
+		return status
+	}
+
+	// Wait for the pod to complete and retrieve the logs
+	output, err := container.WaitForPodCompletion(c.clientset, observed.Parent.Metadata.Namespace, podName)
+	if err != nil {
+		status["state"] = "Failed"
+		status["message"] = fmt.Sprintf("Error retrieving Terraform output: %v", err)
+		return status
+	}
+
+	status["output"] = output
+
+    // Retrieve ingress URLs and include them in the status
+    ingressURLs, err := kubernetes.GetAllIngressURLs(c.clientset)
+    if err != nil {
         status["state"] = "Failed"
-        status["message"] = terraformErr.Error()
+        status["message"] = fmt.Sprintf("Error retrieving Ingress URLs: %v", err)
+        return status
     }
+    status["ingressURLs"] = ingressURLs
 
-    return status
+	return status
 }
+
 
 func (c *Controller) errorResponse(action string, err error) map[string]interface{} {
     log.Printf("Error %s: %v", action, err)

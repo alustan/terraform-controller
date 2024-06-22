@@ -7,7 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/alustan/terraform-controller/pkg/util"
 	"github.com/alustan/terraform-controller/pkg/controller" 
-	_ "github.com/alustan/terraform-controller/plugin/aws"
+	
 )
 
 // Variables to be set by ldflags

@@ -127,20 +127,18 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 	}
 	c.updateStatus(observed, initialStatus)
 
-	scriptContent := observed.Parent.Spec.Scripts.Deploy
-	if scriptContent == "" {
-		status := c.errorResponse("executing deploy script", fmt.Errorf("deploy script is missing"))
-		c.updateStatus(observed, status)
-		return status
-	}
-
+	// Determine the script content based on whether it's finalizing or not
+	var scriptContent string
 	if observed.Finalizing {
 		scriptContent = observed.Parent.Spec.Scripts.Destroy
-		if scriptContent == "" {
-			status := c.errorResponse("executing destroy script", fmt.Errorf("destroy script is missing"))
-			c.updateStatus(observed, status)
-			return status
-		}
+	} else {
+		scriptContent = observed.Parent.Spec.Scripts.Deploy
+	}
+
+	if scriptContent == "" {
+		status := c.errorResponse("executing script", fmt.Errorf("script is missing"))
+		c.updateStatus(observed, status)
+		return status
 	}
 
 	// Status update: setting up provider
@@ -201,7 +199,6 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 	})
 
 	pvcName := fmt.Sprintf("pvc-%s", observed.Parent.Metadata.Name)
-
 	err = container.EnsurePVC(c.clientset, observed.Parent.Metadata.Namespace, pvcName)
 	if err != nil {
 		status := c.errorResponse("creating PVC", err)
@@ -222,14 +219,32 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 		return status
 	}
 
-	// Status update: running Terraform
+	// If finalizing, run the destroy script and return
+	if observed.Finalizing {
+		c.updateStatus(observed, map[string]interface{}{
+			"state":   "Progressing",
+			"message": "Running Terraform Destroy",
+		})
+
+		status := c.runDestroy(observed, scriptContent, taggedImageName, secretName, envVars)
+		c.updateStatus(observed, status)
+
+		// Final status update
+		finalStatus := map[string]interface{}{
+			"state":   "Completed",
+			"message": "Destroy process completed successfully",
+		}
+		c.updateStatus(observed, finalStatus)
+		return finalStatus
+	}
+
+	// If not finalizing, run Terraform apply
 	c.updateStatus(observed, map[string]interface{}{
 		"state":   "Progressing",
-		"message": "Running Terraform",
+		"message": "Running Terraform Apply",
 	})
 
-	status := c.runTerraform(observed, scriptContent, taggedImageName, secretName, envVars)
-
+	status := c.runApply(observed, scriptContent, taggedImageName, secretName, envVars)
 	c.updateStatus(observed, status)
 
 	if observed.Parent.Spec.Provider != "" {
@@ -255,7 +270,6 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 		"state":   "Completed",
 		"message": "Processing completed successfully",
 	}
-
 	c.updateStatus(observed, finalStatus)
 	return finalStatus
 }
@@ -310,17 +324,46 @@ func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoD
 		pvcName)
 }
 
-func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedImageName, secretName string, envVars map[string]string) map[string]interface{} {
+func (c *Controller) runDestroy(observed SyncRequest, scriptContent, taggedImageName, secretName string, envVars map[string]string) map[string]interface{} {
+	// Call to run Terraform destroy
 	var terraformErr error
-	var podName string
+	
 
 	for i := 0; i < maxRetries; i++ {
-		podName, terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, envVars, scriptContent, taggedImageName, secretName)
+		_, terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
+		
 		if terraformErr == nil {
 			break
 		}
 		log.Printf("Retrying Terraform command due to error: %v", terraformErr)
-		time.Sleep(5 * time.Minute)
+		time.Sleep(2 * time.Minute)
+	}
+	status := map[string]interface{}{
+		"state":   "Success",
+		"message": "Terraform destroyed successfully",
+	}
+	if terraformErr != nil {
+		status["state"] = "Failed"
+		status["message"] = terraformErr.Error()
+		return status
+	}
+
+	return status
+}
+
+
+func (c *Controller) runApply(observed SyncRequest, scriptContent, taggedImageName, secretName string, envVars map[string]string) map[string]interface{} {
+	var terraformErr error
+	var podName string
+
+	for i := 0; i < maxRetries; i++ {
+		podName, terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
+		
+		if terraformErr == nil {
+			break
+		}
+		log.Printf("Retrying Terraform command due to error: %v", terraformErr)
+		time.Sleep(2 * time.Minute)
 	}
 
 	status := map[string]interface{}{
@@ -363,6 +406,7 @@ func (c *Controller) runTerraform(observed SyncRequest, scriptContent, taggedIma
 
 	return status
 }
+
 
 func (c *Controller) errorResponse(action string, err error) map[string]interface{} {
 	log.Printf("Error %s: %v", action, err)

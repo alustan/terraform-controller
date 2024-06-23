@@ -9,58 +9,23 @@ import (
     "strings"
     "time"
 
-    v1 "k8s.io/api/core/v1"
+    batchv1 "k8s.io/api/batch/v1"
+    corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
 )
 
-// checkExistingRunPods checks for existing running, pending, or container creating pods with the specified label.
-func checkExistingRunPods(clientset *kubernetes.Clientset, namespace, labelSelector string) (bool, error) {
-    pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
-        LabelSelector: labelSelector,
-    })
-    if err != nil {
-        return false, err
-    }
-
-    for _, pod := range pods.Items {
-        if pod.Status.Phase == v1.PodRunning || pod.Status.Phase == v1.PodPending {
-            return true, nil
-        }
-        for _, containerStatus := range pod.Status.ContainerStatuses {
-            if containerStatus.State.Waiting != nil && containerStatus.State.Waiting.Reason == "ContainerCreating" {
-                return true, nil
-            }
-        }
-    }
-    return false, nil
-}
-
-// CreateRunPod creates a Kubernetes Pod that runs a script with specified environment variables and image.
-func CreateRunPod(clientset *kubernetes.Clientset, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName string) (string, error) {
-    labelSelector := fmt.Sprintf("apprun=%s", name)
-
-    // Check for existing pods with the same label
-    exists, err := checkExistingRunPods(clientset, namespace, labelSelector)
-    if err != nil {
-        log.Printf("Error checking existing pods: %v", err)
-        return "", err
-    }
-
-    if exists {
-        log.Printf("Existing pods with label %s found, not creating new pod.", labelSelector)
-        return "", fmt.Errorf("existing pods with label %s found, not creating new pod", labelSelector)
-    }
-
-    // Generate a unique pod name using the current timestamp
+// CreateRunJob creates a Kubernetes Job that runs a script with specified environment variables and image.
+func CreateRunJob(clientset *kubernetes.Clientset, name, namespace, scriptName string, envVars map[string]string, taggedImageName, imagePullSecretName string) (string, error) {
+    // Generate a unique job name using the current timestamp
     timestamp := time.Now().Format("20060102150405")
-    podName := fmt.Sprintf("%s-docker-run-pod-%s", name, timestamp)
+    jobName := fmt.Sprintf("%s-docker-run-job-%s", name, timestamp)
 
-    log.Printf("Creating Pod in namespace: %s with image: %s", namespace, taggedImageName)
+    log.Printf("Creating Job in namespace: %s with image: %s", namespace, taggedImageName)
 
-    env := []v1.EnvVar{}
+    env := []corev1.EnvVar{}
     for key, value := range envVars {
-        env = append(env, v1.EnvVar{
+        env = append(env, corev1.EnvVar{
             Name:  key,
             Value: value,
         })
@@ -68,66 +33,81 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace, scriptName s
     }
 
     // Add the script name as an environment variable
-    env = append(env, v1.EnvVar{
+    env = append(env, corev1.EnvVar{
         Name:  "SCRIPT",
         Value: scriptName,
     })
 
-    pod := &v1.Pod{
+    ttl := int32(1800) // TTL in seconds (30 mins)
+
+    job := &batchv1.Job{
         ObjectMeta: metav1.ObjectMeta{
-            Name: podName,
+            Name: jobName,
             Labels: map[string]string{
                 "apprun": name,
             },
-            Annotations: map[string]string{
-                "kubectl.kubernetes.io/ttl": "3600", // TTL in seconds (1 hour)
-            },
         },
-        Spec: v1.PodSpec{
-            Containers: []v1.Container{
-                {
-                    Name:            "terraform",
-                    Image:           taggedImageName,
-                    ImagePullPolicy: v1.PullAlways,
-                    Env:             env,
-                   
+        Spec: batchv1.JobSpec{
+            Template: corev1.PodTemplateSpec{
+                Spec: corev1.PodSpec{
+                    Containers: []corev1.Container{
+                        {
+                            Name:            "terraform",
+                            Image:           taggedImageName,
+                            ImagePullPolicy: corev1.PullAlways,
+                            Env:             env,
+                        },
+                    },
+                    RestartPolicy: corev1.RestartPolicyNever,
+                    ImagePullSecrets: []corev1.LocalObjectReference{
+                        {
+                            Name: imagePullSecretName,
+                        },
+                    },
                 },
             },
-            RestartPolicy: v1.RestartPolicyNever,
-          
-            ImagePullSecrets: []v1.LocalObjectReference{
-                {
-                    Name: imagePullSecretName,
-                },
-            },
+            TTLSecondsAfterFinished: &ttl,
         },
     }
 
-    log.Println("Creating the Pod...")
-    _, err = clientset.CoreV1().Pods(namespace).Create(context.Background(), pod, metav1.CreateOptions{})
+    log.Println("Creating the Job...")
+    _, err := clientset.BatchV1().Jobs(namespace).Create(context.Background(), job, metav1.CreateOptions{})
     if err != nil {
-        log.Printf("Failed to create Pod: %v", err)
+        log.Printf("Failed to create Job: %v", err)
         return "", err
     }
 
-    log.Println("Pod created successfully.")
-    return podName, nil
+    log.Println("Job created successfully.")
+    return jobName, nil
 }
 
-// WaitForPodCompletion waits for the pod to complete and retrieves the Terraform output.
-func WaitForPodCompletion(clientset *kubernetes.Clientset, namespace, podName string) (map[string]interface{}, error) {
+// WaitForJobCompletion waits for the job to complete and retrieves the output.
+func WaitForJobCompletion(clientset *kubernetes.Clientset, namespace, jobName string) (map[string]interface{}, error) {
     for {
-        pod, err := clientset.CoreV1().Pods(namespace).Get(context.Background(), podName, metav1.GetOptions{})
+        job, err := clientset.BatchV1().Jobs(namespace).Get(context.Background(), jobName, metav1.GetOptions{})
         if err != nil {
             return nil, err
         }
-        if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+        if job.Status.Succeeded > 0 || job.Status.Failed > 0 {
             break
         }
         time.Sleep(2 * time.Minute)
     }
 
-    req := clientset.CoreV1().Pods(namespace).GetLogs(podName, &v1.PodLogOptions{})
+    pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
+        LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+    })
+    if err != nil {
+        return nil, err
+    }
+
+    if len(pods.Items) == 0 {
+        return nil, fmt.Errorf("no pods found for job %s", jobName)
+    }
+
+    podName := pods.Items[0].Name
+
+    req := clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{})
     logs, err := req.Stream(context.Background())
     if err != nil {
         return nil, err
@@ -151,7 +131,7 @@ func WaitForPodCompletion(clientset *kubernetes.Clientset, namespace, podName st
     var output map[string]interface{}
     err = json.Unmarshal([]byte(lastLine), &output)
     if err != nil {
-        return nil, fmt.Errorf("failed to parse Terraform output: %v", err)
+        return nil, fmt.Errorf("failed to parse output: %v", err)
     }
 
     return output, nil

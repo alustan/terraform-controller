@@ -3,11 +3,11 @@ package main
 import (
 	"log"
 	"fmt"
+	
 
 	"github.com/gin-gonic/gin"
 	"github.com/alustan/terraform-controller/pkg/util"
-	"github.com/alustan/terraform-controller/pkg/controller" 
-	
+	"github.com/alustan/terraform-controller/pkg/controller"
 )
 
 // Variables to be set by ldflags
@@ -25,10 +25,14 @@ func main() {
 	fmt.Printf("Built by: %s\n", builtBy)
 	
 	r := gin.Default()
-	ctrl := controller.NewInClusterController()
+	
 	syncInterval := util.GetSyncInterval()
 	log.Printf("Sync interval is set to %v", syncInterval)
-	go ctrl.Reconcile(syncInterval) // Start the reconciliation loop in a separate goroutine
+
+	ctrl := controller.NewInClusterController(syncInterval)
+
+	// Start the reconciliation loop in a separate goroutine
+	go ctrl.Reconcile()
 
 	r.POST("/sync", ctrl.ServeHTTP)
 
@@ -37,4 +41,3 @@ func main() {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
-

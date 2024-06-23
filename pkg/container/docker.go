@@ -80,6 +80,8 @@ WORKDIR /app
 
 COPY . ./
 
+RUN ls -A
+
 CMD ["/bin/bash"]
 `
 

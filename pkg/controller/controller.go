@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,16 +31,17 @@ const (
 )
 
 type Controller struct {
-	clientset *k8sclient.Clientset
-	dynClient dynclient.Interface
+	clientset   *k8sclient.Clientset
+	dynClient   dynclient.Interface
+	syncInterval time.Duration
 }
 
 type TerraformConfigSpec struct {
-	Provider  string            `json:"provider"`
-	Variables map[string]string `json:"variables"`
-	Scripts   Scripts           `json:"scripts"`
-	GitRepo   GitRepo           `json:"gitRepo"`
-	ContainerRegistry ContainerRegistry `json:"containerRegistry"`
+	Provider           string            `json:"provider"`
+	Variables          map[string]string `json:"variables"`
+	Scripts            Scripts           `json:"scripts"`
+	GitRepo            GitRepo           `json:"gitRepo"`
+	ContainerRegistry  ContainerRegistry `json:"containerRegistry"`
 }
 
 type Scripts struct {
@@ -57,9 +59,9 @@ type ContainerRegistry struct {
 }
 
 type ParentResource struct {
-	ApiVersion string            `json:"apiVersion"`
-	Kind       string            `json:"kind"`
-	Metadata   metav1.ObjectMeta `json:"metadata"`
+	ApiVersion string              `json:"apiVersion"`
+	Kind       string              `json:"kind"`
+	Metadata   metav1.ObjectMeta   `json:"metadata"`
 	Spec       TerraformConfigSpec `json:"spec"`
 }
 
@@ -68,14 +70,15 @@ type SyncRequest struct {
 	Finalizing bool           `json:"finalizing"`
 }
 
-func NewController(clientset *k8sclient.Clientset, dynClient dynclient.Interface) *Controller {
+func NewController(clientset *k8sclient.Clientset, dynClient dynclient.Interface, syncInterval time.Duration) *Controller {
 	return &Controller{
-		clientset: clientset,
-		dynClient: dynClient,
+		clientset:    clientset,
+		dynClient:    dynClient,
+		syncInterval: syncInterval,
 	}
 }
 
-func NewInClusterController() *Controller {
+func NewInClusterController(syncInterval time.Duration) *Controller {
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		log.Fatalf("Error creating in-cluster config: %v", err)
@@ -91,7 +94,7 @@ func NewInClusterController() *Controller {
 		log.Fatalf("Error creating dynamic Kubernetes client: %v", err)
 	}
 
-	return NewController(clientset, dynClient)
+	return NewController(clientset, dynClient, syncInterval)
 }
 
 func (c *Controller) ServeHTTP(r *gin.Context) {
@@ -240,8 +243,8 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 
 		// Update status with plugin credentials
 		pluginStatus := map[string]interface{}{
-			"state":       "Completed",
-			"message":     "Processing completed successfully",
+			"state":         "Completed",
+			"message":       "Processing completed successfully",
 			"cloudResources": resources,
 		}
 		c.updateStatus(observed, pluginStatus)
@@ -369,10 +372,10 @@ func (c *Controller) errorResponse(action string, err error) map[string]interfac
 	}
 }
 
-func (c *Controller) Reconcile(syncInterval time.Duration) {
+func (c *Controller) Reconcile() {
 	for {
 		c.reconcileLoop()
-		time.Sleep(syncInterval)
+		time.Sleep(c.syncInterval)
 	}
 }
 
@@ -390,8 +393,11 @@ func (c *Controller) reconcileLoop() {
 
 	log.Printf("Fetched %d Terraform resources", len(resourceList.Items))
 
+	var wg sync.WaitGroup
 	for _, item := range resourceList.Items {
+		wg.Add(1)
 		go func(item unstructured.Unstructured) {
+			defer wg.Done()
 			var observed SyncRequest
 			raw, err := item.MarshalJSON()
 			if err != nil {
@@ -408,4 +414,5 @@ func (c *Controller) reconcileLoop() {
 			c.handleSyncRequest(observed)
 		}(item)
 	}
+	wg.Wait()
 }

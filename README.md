@@ -30,11 +30,6 @@
 helm install my-terraform-controller-helm oci://registry-1.docker.io/alustan/terraform-controller-helm --version <version>
 ```
 
-> - metacontroller is required to be running in the cluster before installing  `terraform-controller-helm `
-
- ```sh
-helm install my-metacontroller-helm oci://ghcr.io/metacontroller/metacontroller-helm --version <version>
-```
 
 - Define your manifest
 
@@ -58,9 +53,13 @@ spec:
     branch: main
   containerRegistry:
     imageName: docker.io/alustan/terraform-control # imagename to be built by the controller
+    
 #  status:
-#   state: "Progressing"
-#   message: "Setting up provider"
+#    state: ""
+#    message: ""
+#    ingressURLs: ""
+#    credentials : ""
+#    cloudResources: ""
 ```
 
 **This is one of multiple projects that aims to setup a functional platform for seemless app deployment with less technical overhead**

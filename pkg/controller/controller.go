@@ -311,7 +311,7 @@ func (c *Controller) executePlugin(providerType, workspace, region string) (map[
 func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir, sshKey, secretName, pvcName string) (string, string, error) {
 	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
 
-	return container.CreateBuildJob(c.clientset,
+	return container.CreateBuildPod(c.clientset,
 		observed.Parent.Metadata.Name,
 		observed.Parent.Metadata.Namespace,
 		configMapName,
@@ -330,7 +330,7 @@ func (c *Controller) runDestroy(observed SyncRequest, scriptContent, taggedImage
 	
 
 	for i := 0; i < maxRetries; i++ {
-		_, terraformErr = container.CreateRunJob(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
+		_, terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
 		
 		if terraformErr == nil {
 			break
@@ -357,7 +357,7 @@ func (c *Controller) runApply(observed SyncRequest, scriptContent, taggedImageNa
 	var podName string
 
 	for i := 0; i < maxRetries; i++ {
-		podName, terraformErr = container.CreateRunJob(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
+		podName, terraformErr = container.CreateRunPod(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, scriptContent, envVars, taggedImageName, secretName)
 		
 		if terraformErr == nil {
 			break
@@ -377,7 +377,7 @@ func (c *Controller) runApply(observed SyncRequest, scriptContent, taggedImageNa
 	}
 
 	// Wait for the pod to complete and retrieve the logs
-	output, err := container.WaitForJobCompletion(c.clientset, observed.Parent.Metadata.Namespace, podName)
+	output, err := container.WaitForPodCompletion(c.clientset, observed.Parent.Metadata.Namespace, podName)
 	if err != nil {
 		status["state"] = "Failed"
 		status["message"] = fmt.Sprintf("Error retrieving Terraform output: %v", err)

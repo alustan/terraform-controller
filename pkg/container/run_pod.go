@@ -46,10 +46,10 @@ func CreateRunPod(clientset *kubernetes.Clientset, name, namespace, scriptName s
         log.Printf("Setting environment variable %s=%s", key, value)
     }
 
-    // Add the script name as an environment variable
+   // Add the script name as an environment variable
     env = append(env, v1.EnvVar{
         Name:  "SCRIPT",
-        Value: scriptName,
+        Value: "./" + scriptName,  
     })
 
     pod := &v1.Pod{

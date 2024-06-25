@@ -17,6 +17,7 @@ import (
 	"github.com/alustan/terraform-controller/pkg/util"
 	"github.com/alustan/terraform-controller/pluginregistry"
 
+    corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -118,6 +119,7 @@ func (c *Controller) ServeHTTP(r *gin.Context) {
 
 func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interface{} {
 	envVars := c.extractEnvVars(observed.Parent.Spec.Variables)
+	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
 	log.Printf("Observed Parent Spec: %+v", observed.Parent.Spec)
 
 	// Initial status update: processing started
@@ -141,85 +143,66 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 		return status
 	}
 
-	// Status update: setting up provider
-	c.updateStatus(observed, map[string]interface{}{
-		"state":   "Progressing",
-		"message": "Setting up provider",
-	})
+	// Retrieve the tagged image name from ConfigMap if finalizing
+	var taggedImageName string
+	if observed.Finalizing {
+		var err error
+		taggedImageName, err = c.getTaggedImageNameFromConfigMap(observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name)
+		if err != nil {
+			status := c.errorResponse("retrieving tagged image name", err)
+			c.updateStatus(observed, status)
+			return status
+		}
+	} else {
+		// Build and tag image if not finalizing
+		repoDir := filepath.Join("/workspace", "tmp", observed.Parent.Metadata.Name)
+		sshKey := os.Getenv("GIT_SSH_SECRET")
 
-	repoDir := filepath.Join("/workspace", "tmp", observed.Parent.Metadata.Name)
-	sshKey := os.Getenv("GIT_SSH_SECRET")
+		dockerfileAdditions, providerExists, err := c.setupProvider(observed.Parent.Spec.Provider, observed.Parent.Metadata.Labels["workspace"], observed.Parent.Metadata.Labels["region"])
+		if err != nil {
+			status := c.errorResponse("setting up backend", err)
+			c.updateStatus(observed, status)
+			return status
+		}
 
-	// Setup provider and get Dockerfile additions
-	dockerfileAdditions, providerExists, err := c.setupProvider(observed.Parent.Spec.Provider, observed.Parent.Metadata.Labels["workspace"], observed.Parent.Metadata.Labels["region"])
-	if err != nil {
-		status := c.errorResponse("setting up backend", err)
-		c.updateStatus(observed, status)
-		return status
+		configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, dockerfileAdditions, providerExists)
+		if err != nil {
+			status := c.errorResponse("creating Dockerfile ConfigMap", err)
+			c.updateStatus(observed, status)
+			return status
+		}
+
+		encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
+		if encodedDockerConfigJSON == "" {
+			log.Println("Environment variable CONTAINER_REGISTRY_SECRET is not set")
+			status := c.errorResponse("creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
+			c.updateStatus(observed, status)
+			return status
+		}
+		
+		err = container.CreateDockerConfigSecret(c.clientset, secretName, observed.Parent.Metadata.Namespace, encodedDockerConfigJSON)
+		if err != nil {
+			status := c.errorResponse("creating Docker config secret", err)
+			c.updateStatus(observed, status)
+			return status
+		}
+
+		pvcName := fmt.Sprintf("pvc-%s", observed.Parent.Metadata.Name)
+		err = container.EnsurePVC(c.clientset, observed.Parent.Metadata.Namespace, pvcName)
+		if err != nil {
+			status := c.errorResponse("creating PVC", err)
+			c.updateStatus(observed, status)
+			return status
+		}
+
+		taggedImageName, _, err = c.buildAndTagImage(observed, configMapName, repoDir, sshKey, secretName, pvcName)
+		if err != nil {
+			status := c.errorResponse("creating build job", err)
+			c.updateStatus(observed, status)
+			return status
+		}
 	}
 
-	// Status update: creating Dockerfile ConfigMap
-	c.updateStatus(observed, map[string]interface{}{
-		"state":   "Progressing",
-		"message": "Creating Dockerfile ConfigMap",
-	})
-
-	configMapName, err := container.CreateDockerfileConfigMap(c.clientset, observed.Parent.Metadata.Name, observed.Parent.Metadata.Namespace, dockerfileAdditions, providerExists)
-	if err != nil {
-		status := c.errorResponse("creating Dockerfile ConfigMap", err)
-		c.updateStatus(observed, status)
-		return status
-	}
-
-	// Status update: creating Docker config secret
-	c.updateStatus(observed, map[string]interface{}{
-		"state":   "Progressing",
-		"message": "Creating Docker config secret",
-	})
-
-	encodedDockerConfigJSON := os.Getenv("CONTAINER_REGISTRY_SECRET")
-	if encodedDockerConfigJSON == "" {
-		log.Println("Environment variable CONTAINER_REGISTRY_SECRET is not set")
-		status := c.errorResponse("creating Docker config secret", fmt.Errorf("CONTAINER_REGISTRY_SECRET is not set"))
-		c.updateStatus(observed, status)
-		return status
-	}
-	secretName := fmt.Sprintf("%s-container-secret", observed.Parent.Metadata.Name)
-	err = container.CreateDockerConfigSecret(c.clientset, secretName, observed.Parent.Metadata.Namespace, encodedDockerConfigJSON)
-	if err != nil {
-		status := c.errorResponse("creating Docker config secret", err)
-		c.updateStatus(observed, status)
-		return status
-	}
-
-	// Status update: creating PVC
-	c.updateStatus(observed, map[string]interface{}{
-		"state":   "Progressing",
-		"message": "Creating PVC",
-	})
-
-	pvcName := fmt.Sprintf("pvc-%s", observed.Parent.Metadata.Name)
-	err = container.EnsurePVC(c.clientset, observed.Parent.Metadata.Namespace, pvcName)
-	if err != nil {
-		status := c.errorResponse("creating PVC", err)
-		c.updateStatus(observed, status)
-		return status
-	}
-
-	// Status update: building and tagging image
-	c.updateStatus(observed, map[string]interface{}{
-		"state":   "Progressing",
-		"message": "Building and tagging image",
-	})
-
-	taggedImageName, _, err := c.buildAndTagImage(observed, configMapName, repoDir, sshKey, secretName, pvcName)
-	if err != nil {
-		status := c.errorResponse("creating build job", err)
-		c.updateStatus(observed, status)
-		return status
-	}
-
-	// If finalizing, run the destroy script and return
 	if observed.Finalizing {
 		c.updateStatus(observed, map[string]interface{}{
 			"state":   "Progressing",
@@ -229,16 +212,16 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 		status := c.runDestroy(observed, scriptContent, taggedImageName, secretName, envVars)
 		c.updateStatus(observed, status)
 
-		// Final status update
 		finalStatus := map[string]interface{}{
 			"state":   "Completed",
 			"message": "Destroy process completed successfully",
 		}
 		c.updateStatus(observed, finalStatus)
+		
+		finalStatus["finalized"] = true
 		return finalStatus
 	}
 
-	// If not finalizing, run Terraform apply
 	c.updateStatus(observed, map[string]interface{}{
 		"state":   "Progressing",
 		"message": "Running Terraform Apply",
@@ -248,7 +231,6 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 	c.updateStatus(observed, status)
 
 	if observed.Parent.Spec.Provider != "" {
-		// Execute the plugin after running Terraform
 		resources, err := c.executePlugin(observed.Parent.Spec.Provider, observed.Parent.Metadata.Labels["workspace"], observed.Parent.Metadata.Labels["region"])
 		if err != nil {
 			finalStatus := c.errorResponse("executing plugin", err)
@@ -256,7 +238,6 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 			return finalStatus
 		}
 
-		// Update status with plugin credentials
 		pluginStatus := map[string]interface{}{
 			"state":         "Completed",
 			"message":       "Processing completed successfully",
@@ -274,6 +255,18 @@ func (c *Controller) handleSyncRequest(observed SyncRequest) map[string]interfac
 	return finalStatus
 }
 
+func (c *Controller) getTaggedImageNameFromConfigMap(namespace, name string) (string, error) {
+	configMapName := fmt.Sprintf("%s-tagged-image", name)
+	configMap, err := c.clientset.CoreV1().ConfigMaps(namespace).Get(context.Background(), configMapName, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get ConfigMap: %v", err)
+	}
+	taggedImageName, ok := configMap.Data["lastTaggedImage"]
+	if !ok {
+		return "", fmt.Errorf("tagged image name not found in ConfigMap")
+	}
+	return taggedImageName, nil
+}
 func (c *Controller) updateStatus(observed SyncRequest, status map[string]interface{}) {
 	err := kubernetes.UpdateStatus(c.dynClient, observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, status)
 	if err != nil {
@@ -311,7 +304,7 @@ func (c *Controller) executePlugin(providerType, workspace, region string) (map[
 func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoDir, sshKey, secretName, pvcName string) (string, string, error) {
 	imageName := observed.Parent.Spec.ContainerRegistry.ImageName
 
-	return container.CreateBuildPod(c.clientset,
+	taggedImageName, _, err := container.CreateBuildPod(c.clientset,
 		observed.Parent.Metadata.Name,
 		observed.Parent.Metadata.Namespace,
 		configMapName,
@@ -322,6 +315,35 @@ func (c *Controller) buildAndTagImage(observed SyncRequest, configMapName, repoD
 		observed.Parent.Spec.GitRepo.Branch,
 		sshKey,
 		pvcName)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Update the ConfigMap with the tagged image name
+	err = c.updateTaggedImageConfigMap(observed.Parent.Metadata.Namespace, observed.Parent.Metadata.Name, taggedImageName)
+	if err != nil {
+		return "", "", err
+	}
+
+	return taggedImageName, "", nil
+}
+func (c *Controller) updateTaggedImageConfigMap(namespace, name, taggedImageName string) error {
+	configMapData := map[string]string{
+		"lastTaggedImage": taggedImageName,
+	}
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-tagged-image", name),
+			Namespace: namespace,
+		},
+		Data: configMapData,
+	}
+
+	_, err := c.clientset.CoreV1().ConfigMaps(namespace).Create(context.Background(), configMap, metav1.CreateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to create ConfigMap: %v", err)
+	}
+	return nil
 }
 
 func (c *Controller) runDestroy(observed SyncRequest, scriptContent, taggedImageName, secretName string, envVars map[string]string) map[string]interface{} {
